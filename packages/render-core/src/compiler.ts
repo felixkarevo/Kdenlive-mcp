@@ -419,20 +419,30 @@ function rgba(value: string): string {
 
 function textProducerXml(text: TextOverlay): string[] {
   const duration = text.end - text.start;
+  // The qtext producer ignores geometry/alignment and renders an image sized
+  // to the text, which compositing then scales to fill the frame. Draw with the
+  // qtext filter on a transparent full-frame color producer instead so the
+  // style rectangle, alignment, and pixel font size are honored.
   return [
     `  <producer id="text-${text.id}" in="0" out="${String(duration - 1)}">`,
-    property('mlt_service', 'qtext'),
-    property('text', text.text),
-    property('fgcolour', rgba(text.style.color)),
-    property('bgcolour', rgba(text.style.backgroundColor)),
-    property('family', text.style.fontFamily),
-    property('size', text.style.fontSize),
+    property('mlt_service', 'color'),
+    property('resource', '0x00000000'),
+    property('mlt_image_format', 'rgba'),
+    `    <filter id="text-filter-${text.id}" in="0" out="${String(duration - 1)}">`,
+    property('mlt_service', 'qtext', 6),
+    property('argument', text.text, 6),
+    property('fgcolour', rgba(text.style.color), 6),
+    property('bgcolour', rgba(text.style.backgroundColor), 6),
+    property('family', text.style.fontFamily, 6),
+    property('size', text.style.fontSize, 6),
     property(
       'geometry',
       `${String(text.style.x * 100)}%/${String(text.style.y * 100)}%:${String(text.style.width * 100)}%x${String(text.style.height * 100)}%:100`,
+      6,
     ),
-    property('halign', text.style.horizontalAlign),
-    property('valign', text.style.verticalAlign),
+    property('halign', text.style.horizontalAlign, 6),
+    property('valign', text.style.verticalAlign, 6),
+    '    </filter>',
     '  </producer>',
   ];
 }

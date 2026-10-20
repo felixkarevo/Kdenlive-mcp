@@ -261,9 +261,20 @@ describe('MLT compiler', () => {
     expect(first.xml).toContain(
       '<producer id="text-00000000-0000-4000-8000-000000000306"',
     );
+    // Titles must use the qtext filter: the qtext producer ignores geometry
+    // and alignment, so titles were scaled to fill the frame.
+    expect(first.xml).not.toContain(
+      '<property name="mlt_service">qtext</property>\n    <property name="text">',
+    );
+    expect(first.xml).toContain(
+      '<filter id="text-filter-00000000-0000-4000-8000-000000000306"',
+    );
+    expect(first.xml).toMatch(
+      /<property name="mlt_service">qtext<\/property>\s*<property name="argument">/u,
+    );
     expect(first.durationFrames).toBe(90);
     expect(createHash('sha256').update(first.xml).digest('hex')).toBe(
-      'f90eca6eb163c1016ea9df1ccd0180af58417775e42885771bd76d6d9c84a2b9',
+      '92c48202f182e9ae47e45703c372e0236dd46fca2f8402a6d2e9b86df627bac5',
     );
   });
 });
