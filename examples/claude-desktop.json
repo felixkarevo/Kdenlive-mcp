@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "kdenlive": {
-      "command": "C:\\Users\\you\\AppData\\Local\\KdenliveMCP\\kdenlive-mcp-1.1.0-windows-x64\\kdenlive-mcp.cmd",
+      "command": "C:\\Users\\you\\AppData\\Local\\KdenliveMCP\\kdenlive-mcp-1.1.1-windows-x64\\kdenlive-mcp.cmd",
       "args": [
         "--root",
         "C:\\Users\\you\\Videos",

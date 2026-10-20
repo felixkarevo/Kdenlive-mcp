@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.1](https://github.com/felixkarevo/Kdenlive-mcp/compare/b1ff6d5...kdenlive-mcp-v1.1.1) (2026-10-20)
+
+First release of the [felixkarevo/Kdenlive-mcp](https://github.com/felixkarevo/Kdenlive-mcp) fork.
+
+### Bug Fixes
+
+* **render:** run Melt Qt services offscreen on Linux. The sanitized Melt environment dropped `DISPLAY`/`WAYLAND_DISPLAY`, so MLT's Qt module refused to load and timelines rendered MLT's "INVALID" placeholder instead of source media.
+* **render:** honor title geometry, alignment, and font size. Titles and captions now use the `qtext` filter on a transparent full-frame producer instead of the `qtext` producer, which ignored placement and scaled text to fill the frame.
+* `--version` now reports the release version instead of the server package's stale `1.0.0`.
+* Linux install and uninstall scripts are executable.
+* `--doctor` explains that snap/Flatpak Kdenlive builds keep `melt` sandboxed and that the distribution `melt` package is needed.
+
+### Build
+
+* Replace pnpm with Bun for dependency installation, workspace scripts, CI, and release packaging. The server still runs on Node.js 22+.
+* Generate the SBOM and license inventory from installed package manifests instead of pnpm commands.
+
 ## [1.1.0](https://github.com/AMMIROSOH/Kdenlive-mcp/compare/kdenlive-mcp-v1.0.1...kdenlive-mcp-v1.1.0) (2026-08-31)
 
 

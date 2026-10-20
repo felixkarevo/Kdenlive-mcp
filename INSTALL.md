@@ -104,7 +104,7 @@ Claude Code (user scope, Linux example):
 
 ```sh
 claude mcp add kdenlive --scope user -- \
-  ~/.local/share/kdenlive-mcp/kdenlive-mcp-1.1.0-linux-x64/kdenlive-mcp \
+  ~/.local/share/kdenlive-mcp/kdenlive-mcp-1.1.1-linux-x64/kdenlive-mcp \
   --root ~/Videos --client-id claude-code
 ```
 
