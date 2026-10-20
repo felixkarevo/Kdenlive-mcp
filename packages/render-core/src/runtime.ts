@@ -108,6 +108,7 @@ const ALLOWED_ENVIRONMENT = new Set([
   'Path',
   'QML2_IMPORT_PATH',
   'QT_PLUGIN_PATH',
+  'QT_QPA_PLATFORM',
   'SystemRoot',
   'TEMP',
   'TMP',
@@ -126,10 +127,18 @@ export function runtimeEnvironment(executable: string): NodeJS.ProcessEnv {
     .split('/')
     .at(-1)
     ?.toLowerCase();
+  const isMelt = executableName === 'melt' || executableName === 'melt.exe';
   if (
-    process.platform === 'win32' &&
-    (executableName === 'melt' || executableName === 'melt.exe')
+    process.platform !== 'win32' &&
+    isMelt &&
+    environment.QT_QPA_PLATFORM === undefined
   ) {
+    // MLT's Qt module (qtext titles, qtblend compositing) refuses to load
+    // without DISPLAY or WAYLAND_DISPLAY, which this sanitized environment
+    // omits. Render headlessly so output never depends on the host session.
+    environment.QT_QPA_PLATFORM = 'offscreen';
+  }
+  if (process.platform === 'win32' && isMelt) {
     // Desktop MCP hosts can inject Qt/MLT paths for their own runtime. Passing
     // those paths to Kdenlive's melt.exe can load an incompatible plugin or DLL
     // and terminate with STATUS_ACCESS_VIOLATION. Kdenlive's Windows package is

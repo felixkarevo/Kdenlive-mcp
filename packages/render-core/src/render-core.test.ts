@@ -320,6 +320,27 @@ describe('runtime process isolation', () => {
     },
   );
 
+  it.runIf(process.platform !== 'win32')(
+    'renders Melt Qt services offscreen without a display server',
+    () => {
+      const previous = process.env.QT_QPA_PLATFORM;
+      delete process.env.QT_QPA_PLATFORM;
+      try {
+        expect(runtimeEnvironment('/usr/bin/melt').QT_QPA_PLATFORM).toBe(
+          'offscreen',
+        );
+        expect(
+          runtimeEnvironment('/usr/bin/ffmpeg').QT_QPA_PLATFORM,
+        ).toBeUndefined();
+        process.env.QT_QPA_PLATFORM = 'xcb';
+        expect(runtimeEnvironment('/usr/bin/melt').QT_QPA_PLATFORM).toBe('xcb');
+      } finally {
+        if (previous === undefined) delete process.env.QT_QPA_PLATFORM;
+        else process.env.QT_QPA_PLATFORM = previous;
+      }
+    },
+  );
+
   it('serializes callers fairly and cancels callers waiting for Melt', async () => {
     let active = 0;
     let maximum = 0;
