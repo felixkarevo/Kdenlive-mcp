@@ -55,7 +55,7 @@ export async function runDoctor(): Promise<DoctorReport> {
             message: `${id} was not discovered or could not run`,
             fix:
               id === 'melt'
-                ? 'Install Kdenlive/MLT or set KDENLIVE_ROOT, MLT_ROOT, or MELT_PATH.'
+                ? 'Install Kdenlive/MLT or set KDENLIVE_ROOT, MLT_ROOT, or MELT_PATH. Snap and Flatpak Kdenlive builds keep melt sandboxed; install the distribution melt package as well.'
                 : `Install FFmpeg or set ${id.toUpperCase()}_PATH.`,
           },
     );

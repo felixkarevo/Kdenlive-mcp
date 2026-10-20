@@ -17,18 +17,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          version: 9.5.0
+          bun-version: 1.3.14
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm check
-      - run: pnpm docs:check
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bun run docs:check
       - if: matrix.os == 'ubuntu-latest'
-        run: pnpm sbom
+        run: bun run sbom
 
   python:
     runs-on: ubuntu-latest
@@ -47,29 +46,28 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          version: 9.5.0
+          bun-version: 1.3.14
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg melt xvfb xauth
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm capabilities -- --output artifacts/capabilities-linux.json
-      - run: pnpm fixtures:milestone-1 -- --require-runtime
-      - run: pnpm test:runtime
-      - run: pnpm spike:prepare
-      - run: pnpm spike:render
-      - run: pnpm render:acceptance
-      - run: pnpm mcp:acceptance
-      - run: pnpm sample:milestone-6
+      - run: bun install --frozen-lockfile
+      - run: bun run capabilities --output artifacts/capabilities-linux.json
+      - run: bun run fixtures:milestone-1 --require-runtime
+      - run: bun run test:runtime
+      - run: bun run spike:prepare
+      - run: bun run spike:render
+      - run: bun run render:acceptance
+      - run: bun run mcp:acceptance
+      - run: bun run sample:milestone-6
       - run: timeout --foreground 30s melt artifacts/milestone-6-sample/Kdenlive-MCP-Milestone-6.kdenlive -consumer xml:artifacts/milestone-6-sample/validated.mlt
-      - run: pnpm package:release -- --platform linux
+      - run: bun run package:release --platform linux
       - shell: bash
         run: |
           version="$(node -p "require('./package.json').version")"
-          pnpm release:verify -- --path "artifacts/release/kdenlive-mcp-${version}-linux-x64"
+          bun run release:verify --path "artifacts/release/kdenlive-mcp-${version}-linux-x64"
       - uses: actions/upload-artifact@v4
         with:
           name: render-smoke-linux
@@ -79,40 +77,39 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          version: 9.5.0
+          bun-version: 1.3.14
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
       - shell: pwsh
         run: |
           choco install kdenlive --no-progress -y
           if (-not (Get-Command ffmpeg.exe -ErrorAction SilentlyContinue)) {
             choco install ffmpeg --no-progress -y
           }
-      - run: pnpm install --frozen-lockfile
+      - run: bun install --frozen-lockfile
       - shell: pwsh
         run: |
           $melt = Get-ChildItem "C:\Program Files\kdenlive" -Recurse -Filter melt.exe | Select-Object -First 1
           if (-not $melt) { throw "melt.exe not found in Kdenlive installation" }
           "MELT_PATH=$($melt.FullName)" >> $env:GITHUB_ENV
-      - run: pnpm capabilities -- --output artifacts/capabilities-windows.json
-      - run: pnpm fixtures:milestone-1 -- --require-runtime
-      - run: pnpm test:runtime
-      - run: pnpm spike:prepare
-      - run: pnpm spike:render
-      - run: pnpm render:acceptance
-      - run: pnpm mcp:acceptance
-      - run: pnpm sample:milestone-6
+      - run: bun run capabilities --output artifacts/capabilities-windows.json
+      - run: bun run fixtures:milestone-1 --require-runtime
+      - run: bun run test:runtime
+      - run: bun run spike:prepare
+      - run: bun run spike:render
+      - run: bun run render:acceptance
+      - run: bun run mcp:acceptance
+      - run: bun run sample:milestone-6
       - shell: pwsh
         run: '& $env:MELT_PATH artifacts\milestone-6-sample\Kdenlive-MCP-Milestone-6.kdenlive -consumer null'
-      - run: pnpm package:release -- --platform windows
+      - run: bun run package:release --platform windows
       - shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
-          pnpm release:verify -- --path "artifacts/release/kdenlive-mcp-$version-windows-x64"
+          bun run release:verify --path "artifacts/release/kdenlive-mcp-$version-windows-x64"
       - uses: actions/upload-artifact@v4
         with:
           name: render-smoke-windows

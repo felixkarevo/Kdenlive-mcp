@@ -1,7 +1,7 @@
-import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
+import { productionDependencies } from './lib/production-dependencies.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const outputIndex = process.argv.indexOf('--output');
@@ -9,40 +9,21 @@ const output = resolve(
   root,
   outputIndex < 0 ? 'artifacts/licenses' : process.argv[outputIndex + 1],
 );
-const licenses = await new Promise((resolvePromise, reject) => {
-  const pnpmCli = process.env.npm_execpath;
-  if (pnpmCli === undefined) throw new Error('Run this script through pnpm.');
-  const child = spawn(
-    process.execPath,
-    [pnpmCli, 'licenses', 'list', '--prod', '--json'],
-    {
-      cwd: root,
-      shell: false,
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    },
-  );
-  let stdout = '';
-  let stderr = '';
-  child.stdout.on('data', (chunk) => (stdout += chunk.toString('utf8')));
-  child.stderr.on('data', (chunk) => (stderr += chunk.toString('utf8')));
-  child.on('error', reject);
-  child.on('close', (code) =>
-    code === 0 ? resolvePromise(JSON.parse(stdout)) : reject(new Error(stderr)),
-  );
-});
-const rows = [];
-for (const [license, packages] of Object.entries(licenses)) {
-  for (const item of packages) {
-    rows.push({
-      name: item.name,
-      versions: item.versions,
-      license,
-      author: item.author ?? null,
-      homepage: item.homepage ?? null,
-    });
-  }
+const byName = new Map();
+for (const item of await productionDependencies(root)) {
+  const existing = byName.get(item.name);
+  if (existing === undefined)
+    byName.set(item.name, { ...item, versions: [item.version] });
+  else if (!existing.versions.includes(item.version))
+    existing.versions.push(item.version);
 }
+const rows = [...byName.values()].map((item) => ({
+  name: item.name,
+  versions: item.versions.sort(),
+  license: item.license,
+  author: item.author,
+  homepage: item.homepage,
+}));
 rows.sort((a, b) => a.name.localeCompare(b.name));
 const markdown = [
   '# Production Node dependency licenses',

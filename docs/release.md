@@ -1,9 +1,9 @@
 # Release process
 
-1. Run `pnpm install --frozen-lockfile`, `pnpm check`, `pnpm docs:check`,
-   `pnpm render:acceptance`, and `pnpm mcp:acceptance` on a supported runtime.
-2. Run `pnpm sbom` and inspect both CycloneDX and SPDX documents.
-3. Build both platform archives with `pnpm package:release -- --platform <platform>`.
+1. Run `bun install --frozen-lockfile`, `bun run check`, `bun run docs:check`,
+   `bun run render:acceptance`, and `bun run mcp:acceptance` on a supported runtime.
+2. Run `bun run sbom` and inspect both CycloneDX and SPDX documents.
+3. Build both platform archives with `bun run package:release --platform <platform>`.
 4. Compare each extracted `MANIFEST.json` with a clean rebuild and verify archive checksums.
 5. Review dependency licenses, runtime manifest, notices, CodeQL, dependency review,
    and secret scanning. External runtimes are not part of the archive.

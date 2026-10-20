@@ -6,13 +6,18 @@ Kdenlive, MLT, or FFmpeg in the first public release.
 
 ## Requirements
 
-- Node.js 22 or newer.
+- Node.js 22 or newer (runs the server).
+- Bun 1.3 or newer (installs dependencies and builds source installs only).
 - Kdenlive with MLT, or separate `melt`, `ffmpeg`, and `ffprobe` executables.
 - Windows x64 or Linux x64. Other architectures are not release-tested yet.
 
 The tested Windows setup is Kdenlive 26.04.2 installed in
 `C:\Program Files\Kdenlive`. Linux CI tests the distribution against the Ubuntu
 MLT and FFmpeg packages. See [runtime support](docs/runtime-support.md).
+
+Snap and Flatpak builds of Kdenlive keep `melt` inside their sandbox, where the
+server cannot run it. With those builds, install the distribution MLT package as
+well, for example `sudo apt install melt` on Ubuntu/Debian.
 
 ## Windows source install
 
@@ -94,6 +99,14 @@ tool_timeout_sec = 3600
 The exact Codex documentation could not be fetched while preparing this release;
 verify the config-file location against the Codex version you use. The server
 entry itself is exercised through the standard MCP stdio protocol in CI.
+
+Claude Code (user scope, Linux example):
+
+```sh
+claude mcp add kdenlive --scope user -- \
+  ~/.local/share/kdenlive-mcp/kdenlive-mcp-1.1.0-linux-x64/kdenlive-mcp \
+  --root ~/Videos --client-id claude-code
+```
 
 Claude Desktop and Cursor examples are in [examples](examples). Their config-file
 locations vary by client version, so use the client UI/documentation to locate

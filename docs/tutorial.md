@@ -14,4 +14,4 @@
 
 The server resource `kdenlive://instructions` contains the concise operating rules
 for agents. The acceptance workflow in `apps/mcp-server/src/acceptance-cli.ts`
-implements these steps with synthetic media and is run by `pnpm mcp:acceptance`.
+implements these steps with synthetic media and is run by `bun run mcp:acceptance`.

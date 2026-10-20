@@ -15,14 +15,14 @@ Artifacts: `docs/adr/0001-editor-engine-boundary.md`, `LICENSE`, and
 
 ## 0.2 Repository scaffold
 
-- [x] 0.2.a Add the pnpm/TypeScript workspace and strict compiler settings.
+- [x] 0.2.a Add the Bun/TypeScript workspace and strict compiler settings.
 - [x] 0.2.b Add formatting, linting, unit tests, and package build boundaries.
 - [x] 0.2.c Add the Python 3.12 worker shell and its quality gates.
 - [x] 0.2.d Add issue/PR templates and contribution rules.
 - [x] 0.2.e Add Windows/Linux CI and conventional release automation.
 
-Acceptance: `pnpm install && pnpm check`; then create a Python 3.12 environment,
-install `apps/analysis-worker[dev]`, and run `pnpm worker:check`.
+Acceptance: `bun install && bun run check`; then create a Python 3.12 environment,
+install `apps/analysis-worker[dev]`, and run `bun run worker:check`.
 
 ## 0.3 Runtime capability probe
 
@@ -33,7 +33,7 @@ install `apps/analysis-worker[dev]`, and run `pnpm worker:check`.
 - [x] 0.3.e Unit-test parsing and missing-runtime behavior.
 - [ ] 0.3.f Capture reference snapshots on the pinned Windows/Linux runners.
 
-Acceptance: `pnpm capabilities -- --output artifacts/capabilities.json`. The
+Acceptance: `bun run capabilities --output artifacts/capabilities.json`. The
 command exits nonzero unless all three executables are present and queryable.
 
 ## 0.4 Vertical rendering spike
@@ -46,7 +46,7 @@ command exits nonzero unless all three executables are present and queryable.
 - [ ] 0.4.f Run smoke render on pinned MLT 7.38 Windows/Linux images.
 - [ ] 0.4.g Compare normalized `framemd5` and decoded PCM hashes across platforms.
 
-Acceptance: `pnpm spike:prepare && pnpm spike:render`. Cross-platform acceptance
+Acceptance: `bun run spike:prepare && bun run spike:render`. Cross-platform acceptance
 is only complete when both CI smoke-render jobs pass and their decoded hashes
 match. Container/runtime pinning belongs to packaging milestone 7, so CI installs
 the best available MLT and reports its capability snapshot for now.

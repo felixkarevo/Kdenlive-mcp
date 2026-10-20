@@ -50,14 +50,14 @@ should confirm the config-file location for their installed Codex version.
 ## Acceptance
 
 ```shell
-pnpm check
-pnpm docs:check
-pnpm doctor
-pnpm render:acceptance
-pnpm mcp:acceptance
-pnpm sbom
-pnpm package:release -- --platform windows
-pnpm release:acceptance -- --platform windows
+bun run check
+bun run docs:check
+bun run doctor
+bun run render:acceptance
+bun run mcp:acceptance
+bun run sbom
+bun run package:release --platform windows
+bun run release:acceptance --platform windows
 ```
 
 The first public release is intentionally an external-runtime public preview. It

@@ -22,19 +22,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          version: 9.5.0
+          bun-version: 1.3.14
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm check
-      - run: pnpm docs:check
-      - run: pnpm sbom -- --output artifacts/release/sbom
-      - run: pnpm licenses:report -- --output artifacts/release/licenses
-      - run: pnpm package:release -- --platform ${{ matrix.platform }} --output artifacts/release
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bun run docs:check
+      - run: bun run sbom --output artifacts/release/sbom
+      - run: bun run licenses:report --output artifacts/release/licenses
+      - run: bun run package:release --platform ${{ matrix.platform }} --output artifacts/release
       - uses: sigstore/cosign-installer@v3
       - shell: bash
         run: |

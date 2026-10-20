@@ -166,8 +166,7 @@ export class MeltExecutionCoordinator {
 
   constructor(
     options:
-      | number
-      | { readonly limit?: number; readonly lockPath?: string } = {},
+      number | { readonly limit?: number; readonly lockPath?: string } = {},
   ) {
     const limit =
       typeof options === 'number'
@@ -298,9 +297,7 @@ export class MeltExecutionCoordinator {
 }
 
 export type MeltFailureCategory =
-  | 'access-violation'
-  | 'runtime-missing'
-  | 'renderer-error';
+  'access-violation' | 'runtime-missing' | 'renderer-error';
 
 export class MeltExecutionError extends Error {
   readonly category: MeltFailureCategory;

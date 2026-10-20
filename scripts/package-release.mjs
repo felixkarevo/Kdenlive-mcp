@@ -34,6 +34,13 @@ const output = resolve(
 const archiveName = `kdenlive-mcp-${packageJson.version}-${platform}-x64`;
 const stage = join(output, archiveName);
 
+function bunExecutable() {
+  if (process.versions.bun !== undefined) return process.execPath;
+  return (
+    process.env.BUN_PATH ?? (process.platform === 'win32' ? 'bun.exe' : 'bun')
+  );
+}
+
 async function run(command, args) {
   await new Promise((resolvePromise, reject) => {
     const child = spawn(command, args, {
@@ -84,26 +91,16 @@ await writeFile(
   )}\n`,
   'utf8',
 );
-const pnpmCli = process.env.npm_execpath;
-if (pnpmCli === undefined) throw new Error('Run this script through pnpm.');
-await run(process.execPath, [
-  pnpmCli,
-  '--dir',
+await run(bunExecutable(), [
+  'install',
+  '--cwd',
   installRoot,
-  'add',
-  '--prod',
-  '--prefer-offline',
   '--ignore-scripts',
-  '--force',
-  '--config.node-linker=hoisted',
-  '@modelcontextprotocol/sdk@1.29.0',
-  'zod@4.4.3',
+  '--linker',
+  'hoisted',
 ]);
 await cp(join(installRoot, 'package.json'), join(stage, 'app', 'package.json'));
-await cp(
-  join(installRoot, 'pnpm-lock.yaml'),
-  join(stage, 'app', 'pnpm-lock.yaml'),
-);
+await cp(join(installRoot, 'bun.lock'), join(stage, 'app', 'bun.lock'));
 await cp(
   join(installRoot, 'node_modules'),
   join(stage, 'app', 'node_modules'),

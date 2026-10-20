@@ -321,8 +321,7 @@ describe('Milestone 4 MCP protocol', () => {
     expect(exported.ok).toBe(true);
     const projectPath = String(exported.data?.path);
     const sidecars = exported.data?.sidecars as
-      | { role: string; path: string; sha256: string }[]
-      | undefined;
+      { role: string; path: string; sha256: string }[] | undefined;
     expect(sidecars).toHaveLength(1);
     expect(sidecars?.[0]).toMatchObject({
       role: 'captions',

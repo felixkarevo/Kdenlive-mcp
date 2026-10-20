@@ -2,21 +2,21 @@
 
 ## Development checks
 
-Use Node.js 22+, pnpm 9, and Python 3.12. Before opening a pull request, run:
+Use Node.js 22+, Bun 1.3+, and Python 3.12. Before opening a pull request, run:
 
 ```shell
-pnpm install --frozen-lockfile
-pnpm check
-pnpm docs:check
+bun install --frozen-lockfile
+bun run check
+bun run docs:check
 python -m pip install -e "apps/analysis-worker[dev]"
 python -m ruff check apps/analysis-worker
-pnpm worker:check
+bun run worker:check
 ```
 
-Runtime changes also require `pnpm capabilities`; rendering changes require the
+Runtime changes also require `bun run capabilities`; rendering changes require the
 spike smoke test documented in `docs/milestone-0.md`. MCP/release changes require
-`pnpm mcp:acceptance`; packaging changes require `pnpm sbom` and a platform archive
-from `pnpm package:release -- --platform windows` or `linux`.
+`bun run mcp:acceptance`; packaging changes require `bun run sbom` and a platform archive
+from `bun run package:release --platform windows` or `linux`.
 
 Do not commit private media, generated artifacts, bearer tokens, model files, or
 runtime binaries. New dependencies require a license/provenance explanation.

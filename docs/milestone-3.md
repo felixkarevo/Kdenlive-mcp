@@ -59,8 +59,8 @@ Caption profiles route to the deterministic SRT/WebVTT serializers in
 ## Acceptance
 
 ```shell
-pnpm check
-pnpm render:acceptance
+bun run check
+bun run render:acceptance
 ```
 
 The acceptance run generates synthetic 30 fps FFV1/PCM media, creates two linked

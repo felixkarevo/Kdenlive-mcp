@@ -6,10 +6,10 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AMMIROSOH/Kdenlive-mcp.git"
+    "url": "git+https://github.com/felixkarevo/Kdenlive-mcp.git"
   },
-  "homepage": "https://github.com/AMMIROSOH/Kdenlive-mcp#readme",
-  "bugs": "https://github.com/AMMIROSOH/Kdenlive-mcp/issues",
+  "homepage": "https://github.com/felixkarevo/Kdenlive-mcp#readme",
+  "bugs": "https://github.com/felixkarevo/Kdenlive-mcp/issues",
   "keywords": [
     "mcp",
     "kdenlive",
@@ -20,7 +20,7 @@
   "engines": {
     "node": ">=22"
   },
-  "packageManager": "pnpm@9.5.0",
+  "packageManager": "bun@1.3.14",
   "scripts": {
     "build": "tsc -b",
     "clean": "tsc -b --clean",
@@ -31,24 +31,24 @@
     "test:runtime": "vitest run packages/project-core/src/media.runtime.test.ts",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -b --pretty false",
-    "check": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm test",
-    "capabilities": "pnpm --filter @kdenlive-mcp/runtime-probe probe",
-    "spike:prepare": "pnpm --filter @kdenlive-mcp/mlt-spike prepare-fixtures",
-    "spike:compile": "pnpm --filter @kdenlive-mcp/mlt-spike compile",
-    "spike:render": "pnpm --filter @kdenlive-mcp/mlt-spike render",
-    "render:acceptance": "pnpm build && pnpm --filter @kdenlive-mcp/render-core acceptance",
-    "mcp:start": "pnpm build && pnpm --filter @kdenlive-mcp/server start",
-    "mcp:acceptance": "pnpm build && pnpm --filter @kdenlive-mcp/server acceptance",
-    "sample:milestone-6": "pnpm build && node scripts/create-milestone-6-sample.mjs",
-    "doctor": "pnpm build && pnpm --filter @kdenlive-mcp/server start -- --doctor",
+    "check": "bun run format:check && bun run typecheck && bun run lint && bun run test",
+    "capabilities": "bun run --cwd packages/runtime-probe probe",
+    "spike:prepare": "bun run --cwd packages/mlt-spike prepare-fixtures",
+    "spike:compile": "bun run --cwd packages/mlt-spike compile",
+    "spike:render": "bun run --cwd packages/mlt-spike render",
+    "render:acceptance": "bun run build && bun run --cwd packages/render-core acceptance",
+    "mcp:start": "bun run build && bun run --cwd apps/mcp-server start",
+    "mcp:acceptance": "bun run build && bun run --cwd apps/mcp-server acceptance",
+    "sample:milestone-6": "bun run build && node scripts/create-milestone-6-sample.mjs",
+    "doctor": "bun run build && node apps/mcp-server/dist/cli.js --doctor",
     "docs:check": "node scripts/verify-docs.mjs",
     "sbom": "node scripts/generate-sbom.mjs",
     "licenses:report": "node scripts/generate-notices.mjs",
-    "package:release": "pnpm build && pnpm licenses:report && node scripts/package-release.mjs",
-    "package:archive": "pnpm build && node scripts/package-release.mjs",
+    "package:release": "bun run build && bun run licenses:report && node scripts/package-release.mjs",
+    "package:archive": "bun run build && node scripts/package-release.mjs",
     "release:verify": "node scripts/verify-release.mjs",
     "release:acceptance": "node scripts/release-acceptance.mjs",
-    "fixtures:milestone-1": "pnpm --filter @kdenlive-mcp/project-core fixtures",
+    "fixtures:milestone-1": "bun run --cwd packages/project-core fixtures",
     "worker:check": "python -m pytest apps/analysis-worker && python -m mypy apps/analysis-worker/src"
   },
   "devDependencies": {
@@ -61,5 +61,9 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.57.0",
     "vitest": "^4.1.9"
-  }
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ]
 }

@@ -61,8 +61,8 @@ project validator reports unavailable services.
 ## Acceptance
 
 ```shell
-pnpm check
-pnpm test:coverage
+bun run check
+bun run test:coverage
 ```
 
 The suite covers every editing gesture, atomic store integration and undo, linked

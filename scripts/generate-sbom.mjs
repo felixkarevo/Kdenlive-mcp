@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
+import { productionDependencies } from './lib/production-dependencies.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const outputIndex = process.argv.indexOf('--output');
@@ -14,58 +14,17 @@ const packageJson = JSON.parse(
   await readFile(join(root, 'package.json'), 'utf8'),
 );
 
-function pnpmList() {
-  return new Promise((resolvePromise, reject) => {
-    const pnpmCli = process.env.npm_execpath;
-    if (pnpmCli === undefined) throw new Error('Run this script through pnpm.');
-    const child = spawn(
-      process.execPath,
-      [
-        pnpmCli,
-        'list',
-        '--recursive',
-        '--prod',
-        '--depth',
-        'Infinity',
-        '--json',
-      ],
-      {
-        cwd: root,
-        shell: false,
-        windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      },
-    );
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (chunk) => (stdout += chunk.toString('utf8')));
-    child.stderr.on('data', (chunk) => (stderr += chunk.toString('utf8')));
-    child.on('error', reject);
-    child.on('close', (code) =>
-      code === 0
-        ? resolvePromise(JSON.parse(stdout))
-        : reject(new Error(stderr)),
-    );
+const components = new Map();
+for (const item of await productionDependencies(root)) {
+  const purl = `pkg:npm/${encodeURIComponent(item.name)}@${item.version}`;
+  components.set(`${item.name}@${item.version}`, {
+    type: 'library',
+    'bom-ref': purl,
+    name: item.name,
+    version: item.version,
+    purl,
   });
 }
-
-const roots = await pnpmList();
-const components = new Map();
-function visit(node) {
-  if (node?.name && node?.version) {
-    const key = `${node.name}@${node.version}`;
-    components.set(key, {
-      type: 'library',
-      'bom-ref': `pkg:npm/${encodeURIComponent(node.name)}@${node.version}`,
-      name: node.name,
-      version: node.version,
-      purl: `pkg:npm/${encodeURIComponent(node.name)}@${node.version}`,
-    });
-  }
-  for (const dependency of Object.values(node?.dependencies ?? {}))
-    visit(dependency);
-}
-for (const item of roots) visit(item);
 const sorted = [...components.values()].sort((a, b) =>
   a['bom-ref'].localeCompare(b['bom-ref']),
 );
@@ -107,7 +66,7 @@ const spdx = {
   dataLicense: 'CC0-1.0',
   SPDXID: 'SPDXRef-DOCUMENT',
   name: `${packageJson.name}-${packageJson.version}`,
-  documentNamespace: `https://github.com/AMMIROSOH/Kdenlive-mcp/sbom/${createHash('sha256').update(timestamp).digest('hex')}`,
+  documentNamespace: `https://github.com/felixkarevo/Kdenlive-mcp/sbom/${createHash('sha256').update(timestamp).digest('hex')}`,
   creationInfo: {
     created: timestamp,
     creators: ['Tool: scripts/generate-sbom.mjs'],

@@ -17,13 +17,13 @@ MLT XML or Kdenlive project files authoritative.
 Run stdio:
 
 ```shell
-pnpm mcp:start -- --root C:\path\to\allowed-root --client-id my-client
+bun run mcp:start --root C:\path\to\allowed-root --client-id my-client
 ```
 
 Run authenticated loopback HTTP:
 
 ```shell
-pnpm mcp:start -- --http --root C:\path\to\allowed-root --port 8765
+bun run mcp:start --http --root C:\path\to\allowed-root --port 8765
 ```
 
 The generated token path is printed to stderr. HTTP sessions authenticated with
@@ -75,8 +75,8 @@ post-processing; frame, range, and audio previews use the durable render queue.
 ## Acceptance
 
 ```shell
-pnpm check
-pnpm mcp:acceptance
+bun run check
+bun run mcp:acceptance
 ```
 
 The acceptance client connects over a real stdio subprocess, creates a project,

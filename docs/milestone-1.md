@@ -47,9 +47,9 @@
 ## Commands
 
 ```shell
-pnpm check
-pnpm fixtures:milestone-1
-pnpm fixtures:milestone-1 -- --require-runtime
+bun run check
+bun run fixtures:milestone-1
+bun run fixtures:milestone-1 --require-runtime
 ```
 
 ## Exit criterion

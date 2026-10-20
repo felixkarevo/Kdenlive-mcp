@@ -33,11 +33,7 @@ export const renderJobRequestSchema = z.object({
 
 export type RenderJobRequest = z.input<typeof renderJobRequestSchema>;
 export type RenderJobStatus =
-  | 'queued'
-  | 'running'
-  | 'succeeded'
-  | 'failed'
-  | 'cancelled';
+  'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface RenderJob {
   readonly id: string;

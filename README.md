@@ -5,6 +5,10 @@ a versioned JSON project as the source of truth, applies revision-checked timeli
 edits, compiles deterministic MLT, queues renders, generates previews, and verifies
 outputs using the Kdenlive/MLT and FFmpeg installation already on your computer.
 
+> This is a fork of [AMMIROSOH/Kdenlive-mcp](https://github.com/AMMIROSOH/Kdenlive-mcp)
+> that uses Bun instead of pnpm for dependency management and scripts. The server
+> itself still runs on Node.js.
+
 > Public preview: Milestones 0-4, 6, and 7 are implemented. Local AI analysis
 > (Milestone 5) remains planned and unavailable.
 
@@ -24,12 +28,12 @@ outputs using the Kdenlive/MLT and FFmpeg installation already on your computer.
 
 ## Quick start
 
-Requirements: Node.js 22+, pnpm 9, and Kdenlive or separate MLT/FFmpeg tools.
+Requirements: Node.js 22+, Bun 1.3+, and Kdenlive or separate MLT/FFmpeg tools.
 
 Powershell:
 
 ```powershell
-git clone https://github.com/AMMIROSOH/Kdenlive-mcp.git
+git clone https://github.com/felixkarevo/Kdenlive-mcp.git
 cd Kdenlive-mcp
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\install.ps1 -AddToPath
@@ -39,7 +43,7 @@ kdenlive-mcp --doctor
 Linux:
 
 ```sh
-git clone https://github.com/AMMIROSOH/Kdenlive-mcp.git
+git clone https://github.com/felixkarevo/Kdenlive-mcp.git
 cd Kdenlive-mcp
 ./scripts/install.sh
 ~/.local/share/kdenlive-mcp/kdenlive-mcp-*/kdenlive-mcp --doctor
@@ -79,14 +83,14 @@ before exposing the server to additional software.
 ## Development
 
 ```shell
-pnpm install --frozen-lockfile
-pnpm check
-pnpm doctor
-pnpm render:acceptance
-pnpm mcp:acceptance
-pnpm docs:check
-pnpm sbom
-pnpm release:acceptance -- --platform windows
+bun install --frozen-lockfile
+bun run check
+bun run doctor
+bun run render:acceptance
+bun run mcp:acceptance
+bun run docs:check
+bun run sbom
+bun run release:acceptance --platform windows
 ```
 
 ## License

@@ -8,14 +8,11 @@ INSTALL_DIR=${KDENLIVE_MCP_INSTALL_DIR:-"$HOME/.local/share/kdenlive-mcp"}
 command -v node >/dev/null 2>&1 || { echo 'Node.js 22 or newer is required.' >&2; exit 1; }
 NODE_MAJOR=$(node --version | sed 's/^v//' | cut -d. -f1)
 [ "$NODE_MAJOR" -ge 22 ] || { echo "Node.js 22 or newer is required; found $(node --version)." >&2; exit 1; }
-if ! command -v pnpm >/dev/null 2>&1; then
-  corepack enable
-  corepack prepare pnpm@9.5.0 --activate
-fi
+command -v bun >/dev/null 2>&1 || { echo 'Bun is required: https://bun.sh/docs/installation' >&2; exit 1; }
 
 cd "$REPO_ROOT"
-pnpm install --frozen-lockfile
-pnpm package:release -- --platform linux --output artifacts/release
+bun install --frozen-lockfile
+bun run package:release --platform linux --output artifacts/release
 ARCHIVE=$(find "$REPO_ROOT/artifacts/release" -maxdepth 1 -name 'kdenlive-mcp-*-linux-x64.tar.gz' -print | sort | tail -n 1)
 [ -n "$ARCHIVE" ] || { echo 'Linux release archive was not created.' >&2; exit 1; }
 rm -rf "$INSTALL_DIR"

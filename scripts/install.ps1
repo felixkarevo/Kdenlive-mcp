@@ -11,15 +11,14 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 }
 $NodeMajor = [int]((node --version).TrimStart('v').Split('.')[0])
 if ($NodeMajor -lt 22) { throw "Node.js 22 or newer is required; found $(node --version)." }
-if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
-  corepack enable
-  corepack prepare pnpm@9.5.0 --activate
+if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
+  throw 'Bun is required. Install it from https://bun.sh/docs/installation and retry.'
 }
 
 Push-Location $RepoRoot
 try {
-  pnpm install --frozen-lockfile
-  pnpm package:release -- --platform windows --output artifacts/release
+  bun install --frozen-lockfile
+  bun run package:release --platform windows --output artifacts/release
   $Archive = Get-ChildItem "$RepoRoot\artifacts\release\kdenlive-mcp-*-windows-x64.zip" |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
   if (-not $Archive) { throw 'Windows release archive was not created.' }

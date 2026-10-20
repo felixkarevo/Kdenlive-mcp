@@ -17,12 +17,15 @@ const platform =
     : process.argv[platformIndex + 1];
 if (platform !== 'windows' && platform !== 'linux')
   throw new Error('Unsupported platform');
-const pnpmCli = process.env.npm_execpath;
-if (pnpmCli === undefined) throw new Error('Run through pnpm.');
+const bunCli =
+  process.versions.bun !== undefined
+    ? process.execPath
+    : (process.env.BUN_PATH ??
+      (process.platform === 'win32' ? 'bun.exe' : 'bun'));
 
-async function pnpm(args) {
+async function bun(args) {
   await new Promise((resolvePromise, reject) => {
-    const child = spawn(process.execPath, [pnpmCli, ...args], {
+    const child = spawn(bunCli, ['run', ...args], {
       cwd: root,
       shell: false,
       windowsHide: true,
@@ -33,19 +36,19 @@ async function pnpm(args) {
     child.on('close', (code) =>
       code === 0
         ? resolvePromise()
-        : reject(new Error(`pnpm ${args[0]} failed`)),
+        : reject(new Error(`bun run ${args[0]} failed`)),
     );
   });
 }
 
-await pnpm(['check']);
-await pnpm(['docs:check']);
-await pnpm(['render:acceptance']);
-await pnpm(['mcp:acceptance']);
-await pnpm(['sbom']);
-await pnpm(['package:release', '--', '--platform', platform]);
+await bun(['check']);
+await bun(['docs:check']);
+await bun(['render:acceptance']);
+await bun(['mcp:acceptance']);
+await bun(['sbom']);
+await bun(['package:release', '--platform', platform]);
 const stage = `artifacts/release/kdenlive-mcp-${packageJson.version}-${platform}-x64`;
-await pnpm(['release:verify', '--', '--path', stage]);
+await bun(['release:verify', '--path', stage]);
 const archive = resolve(
   root,
   `${stage}.${platform === 'windows' ? 'zip' : 'tar.gz'}`,
