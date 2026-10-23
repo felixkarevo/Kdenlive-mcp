@@ -1042,17 +1042,28 @@ export class WorkspaceService {
       Record<string, readonly { readonly value: unknown }[]>
     > = {},
   ): void {
-    const roots = [
+    const configuredRoots = [
       ...this.allowedRoots,
       ...kdenliveLutDirectories(),
       ...kdenliveDataDirectories('lumas'),
-    ].flatMap((root) => {
+    ];
+    const roots = configuredRoots.flatMap((root) => {
       try {
         return [realpathSync(root)];
       } catch {
         return [];
       }
     });
+    // Lexical check: accept a path written through a root or its real path
+    // (such as /snap/kdenlive/current symlinks) before touching the file.
+    const writtenRoots = [
+      ...configuredRoots.map((root) => resolve(root)),
+      ...roots,
+    ];
+    const outside = (value: string): Error =>
+      new Error(
+        `Path is outside configured roots: ${value}. Use a file under an allowed root or a Kdenlive LUT or luma directory.`,
+      );
     const catalogFiles = new Set(fileParameterNames(service));
     const entries: [string, unknown][] = [
       ...Object.entries(parameters),
@@ -1086,16 +1097,17 @@ export class WorkspaceService {
         continue;
       if (!isAbsolute(value))
         throw new Error(`${service}.${name} must be an absolute path`);
+      if (!writtenRoots.some((root) => contains(root, resolve(value))))
+        throw outside(value);
       let candidate: string;
       try {
         candidate = realpathSync(value);
       } catch {
         throw new Error(`Effect file not found: ${value}`);
       }
+      // A symlink inside a root must not resolve to a file outside it.
       if (!roots.some((root) => contains(root, candidate)))
-        throw new Error(
-          `Path is outside configured roots: ${value}. Use a file under an allowed root or a Kdenlive LUT or luma directory.`,
-        );
+        throw outside(value);
     }
   }
 
