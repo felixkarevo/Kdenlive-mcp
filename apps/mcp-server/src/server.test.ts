@@ -237,6 +237,22 @@ describe('Milestone 4 MCP protocol', () => {
       );
       expect(rejected.error?.code).toBe('PATH_OUTSIDE_ROOTS');
     }
+    const embedded = envelope(
+      await client.callTool({
+        name: 'project_set_master_effects',
+        arguments: {
+          projectId: id,
+          expectedRevision: 2,
+          effects: [
+            {
+              service: 'avfilter.sendcmd',
+              parameters: { 'av.c': `0 drawtext reinit textfile=${secret}` },
+            },
+          ],
+        },
+      }),
+    );
+    expect(embedded.error?.message).toContain('contains a file path');
     const relative = envelope(
       await client.callTool({
         name: 'project_set_master_effects',
@@ -292,6 +308,20 @@ describe('Milestone 4 MCP protocol', () => {
       arguments: { projectId: id, expectedRevision: 3, effects: [{}] },
     });
     expect(missingService.isError).toBe(true);
+    // Plain prose with a spaced slash is not a path.
+    const prose = envelope(
+      await client.callTool({
+        name: 'project_set_master_effects',
+        arguments: {
+          projectId: id,
+          expectedRevision: 3,
+          effects: [
+            { service: 'qtext', parameters: { argument: 'before / after' } },
+          ],
+        },
+      }),
+    );
+    expect(prose.ok).toBe(true);
   });
 
   it('merges partial project settings with the documented defaults', async () => {

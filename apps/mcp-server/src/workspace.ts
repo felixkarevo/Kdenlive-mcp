@@ -98,11 +98,17 @@ const FILE_PARAMETER_NAME =
 const URL_VALUE = /^[a-z][\w+.-]*:\/\//iu;
 const NUMERIC_VALUE = /^-?\d+(?:\.\d+)?$/u;
 
+// An absolute, home, drive, or UNC path starting after a delimiter inside a
+// larger option string, such as `x=/etc/passwd`.
+const EMBEDDED_PATH = /[\s=:;,'"(](?:\/(?=[^\s/])|~[\\/]|[a-z]:[\\/]|\\\\)/iu;
+
 function looksLikePath(value: string): boolean {
   return (
     isAbsolute(value) ||
     value.startsWith('~') ||
     value.startsWith('file:') ||
+    // Drive-relative paths such as C:file only exist on Windows.
+    (process.platform === 'win32' && /^[a-z]:/iu.test(value)) ||
     /(?:^|[\\/])\.\.(?:[\\/]|$)/u.test(value)
   );
 }
@@ -1042,6 +1048,10 @@ export class WorkspaceService {
       if (typeof value !== 'string' || value === '') continue;
       if (URL_VALUE.test(value))
         throw new Error(`${service}.${name} must not be a URL`);
+      if (EMBEDDED_PATH.test(value) && !isAbsolute(value))
+        throw new Error(
+          `${service}.${name} contains a file path; pass the path as its own parameter value`,
+        );
       const fileParameter =
         catalogFiles.has(name) ||
         (FILE_PARAMETER_NAME.test(name) && !NUMERIC_VALUE.test(value));

@@ -43,6 +43,7 @@ export {
   runtimeEnvironment,
   MeltExecutionCoordinator,
   MeltExecutionError,
+  processSandboxDirectory,
   SANITIZED_MELT_ENVIRONMENT_VARIABLES,
   SpawnCommandExecutor,
   type CommandExecution,

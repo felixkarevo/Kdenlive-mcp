@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { open, readFile, unlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 
 export type RuntimeExecutable = 'ffmpeg' | 'ffprobe' | 'melt';
@@ -349,6 +350,24 @@ export class MeltExecutionError extends Error {
   }
 }
 
+let sandboxDirectory: string | undefined;
+
+/**
+ * Empty working directory for child processes. Melt and FFmpeg resolve any
+ * relative path a filter parameter carries against it, so such paths cannot
+ * reach the server's own working directory.
+ */
+export function processSandboxDirectory(): string {
+  if (sandboxDirectory === undefined) {
+    const directory = mkdtempSync(join(tmpdir(), 'kdenlive-mcp-cwd-'));
+    process.once('exit', () => {
+      rmSync(directory, { recursive: true, force: true });
+    });
+    sandboxDirectory = directory;
+  }
+  return sandboxDirectory;
+}
+
 export class SpawnCommandExecutor implements CommandExecutor {
   async run(
     executable: string,
@@ -357,6 +376,7 @@ export class SpawnCommandExecutor implements CommandExecutor {
   ): Promise<CommandExecution> {
     return await new Promise((resolvePromise, reject) => {
       const child = spawn(executable, args, {
+        cwd: processSandboxDirectory(),
         shell: false,
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
