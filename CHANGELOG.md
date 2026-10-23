@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.2.0](https://github.com/felixkarevo/kdenlive-mcp/compare/kdenlive-mcp-v1.1.1...kdenlive-mcp-v1.2.0) (2026-10-23)
+
+
+### Features
+
+* add Kdenlive color correction and grading ([e7dc745](https://github.com/felixkarevo/kdenlive-mcp/commit/e7dc745273bfa0e7a634be0a4a6671c453e708f6))
+* apply any Kdenlive video or audio effect ([23d234d](https://github.com/felixkarevo/kdenlive-mcp/commit/23d234dfff4bb143d4f8b55e3ee673cb51c2f3e3))
+
+
+### Bug Fixes
+
+* report outside-root effect paths before checking existence ([7adf1c4](https://github.com/felixkarevo/kdenlive-mcp/commit/7adf1c49666262ac237a56e615b74b80f174cf6e))
+* **security:** reject parent segments and command filters ([04f732b](https://github.com/felixkarevo/kdenlive-mcp/commit/04f732b458b7609b98c7f92580f252e04de048c0))
+* **security:** sandbox renderer cwd and catch embedded paths ([ab13bb5](https://github.com/felixkarevo/kdenlive-mcp/commit/ab13bb5d74114252517960ddbe824a7ef94bcc1a))
+
 ## [1.1.1](https://github.com/felixkarevo/kdenlive-mcp/compare/b1ff6d5...kdenlive-mcp-v1.1.1) (2026-10-20)
 
 First release of the [felixkarevo/kdenlive-mcp](https://github.com/felixkarevo/kdenlive-mcp) fork.
