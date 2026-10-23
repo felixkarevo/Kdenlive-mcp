@@ -297,9 +297,18 @@ function affineGeometry(clip: Clip): string {
     .join(';');
 }
 
-function effectXml(effect: Effect, duration: number): string[] {
+interface FrameRange {
+  readonly in: number;
+  readonly out: number;
+}
+
+function effectXml(
+  effect: Effect,
+  duration: number,
+  range: FrameRange = { in: 0, out: duration - 1 },
+): string[] {
   const lines = [
-    `    <filter id="effect-${effect.id}" in="0" out="${String(duration - 1)}">`,
+    `    <filter id="effect-${effect.id}" in="${String(range.in)}" out="${String(range.out)}">`,
     property('mlt_service', effect.service, 6),
     property('disable', effect.enabled ? 0 : 1, 6),
   ];
@@ -322,6 +331,7 @@ function clipProducerXml(
   clip: Clip,
   asset: Asset,
   projectRoot: string,
+  trackEffects: readonly { effect: Effect; range: FrameRange }[] = [],
 ): string[] {
   const duration = clipDurationFrames(
     clip.sourceIn,
@@ -464,6 +474,8 @@ function clipProducerXml(
     lines.push('    </filter>');
   }
   for (const effect of clip.effects) lines.push(...effectXml(effect, duration));
+  for (const { effect, range } of trackEffects)
+    lines.push(...effectXml(effect, duration, range));
   lines.push('  </producer>');
   return lines;
 }
@@ -568,25 +580,35 @@ export async function compileProject(
         layerClip.sourceOut,
         layerClip.speed,
       );
-      const trackEffects =
-        track.kind === 'video'
-          ? track.effects.map((effect) => ({
+      // Track effects run per clip; keyframes and zones are re-based so that
+      // frame 0 is the filter's first frame inside this clip.
+      const trackEffects = track.effects.flatMap((effect) => {
+        const clipStart = layerClip.timelineStart;
+        const start = Math.max(clipStart, effect.zone?.start ?? clipStart);
+        const end = Math.min(
+          clipStart + clipDuration,
+          effect.zone?.end ?? clipStart + clipDuration,
+        );
+        if (end <= start) return [];
+        const id = `${effect.id}-${clip.id}`;
+        return [
+          {
+            effect: {
               ...effect,
-              id: `${effect.id}-${clip.id}`,
+              id,
               keyframes: localizeKeyframes(
                 effect.keyframes,
-                layerClip.timelineStart,
-                clipDuration,
-                `${effect.id}-${clip.id}`,
+                start,
+                end - start,
+                id,
               ),
-            }))
-          : [];
+            },
+            range: { in: start - clipStart, out: end - clipStart - 1 },
+          },
+        ];
+      });
       lines.push(
-        ...clipProducerXml(
-          { ...layerClip, effects: [...layerClip.effects, ...trackEffects] },
-          asset,
-          options.projectRoot,
-        ),
+        ...clipProducerXml(layerClip, asset, options.projectRoot, trackEffects),
       );
       const producerIn =
         layerClip.speed.numerator === layerClip.speed.denominator
@@ -728,8 +750,25 @@ export async function compileProject(
     }
     lines.push('    </transition>');
   }
-  for (const effect of project.masterEffects)
-    lines.push(...effectXml(effect, duration));
+  for (const effect of project.masterEffects) {
+    const start = Math.min(effect.zone?.start ?? 0, duration - 1);
+    const end = Math.min(effect.zone?.end ?? duration, duration);
+    lines.push(
+      ...effectXml(
+        {
+          ...effect,
+          keyframes: localizeKeyframes(
+            effect.keyframes,
+            start,
+            end - start,
+            effect.id,
+          ),
+        },
+        duration,
+        { in: start, out: end - 1 },
+      ),
+    );
+  }
   for (const marker of [...project.markers].sort(
     (a, b) => a.frame - b.frame || a.id.localeCompare(b.id),
   )) {

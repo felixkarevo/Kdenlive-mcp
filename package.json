@@ -43,7 +43,7 @@
     "doctor": "bun run build && node apps/mcp-server/dist/cli.js --doctor",
     "docs:check": "node scripts/verify-docs.mjs",
     "sbom": "node scripts/generate-sbom.mjs",
-    "effects:generate": "node scripts/generate-kdenlive-effect-catalog.mjs && prettier --write packages/project-core/src/kdenlive-color-effects.generated.ts",
+    "effects:generate": "node scripts/generate-kdenlive-effect-catalog.mjs && prettier --write packages/project-core/src/kdenlive-effects.generated.ts",
     "licenses:report": "node scripts/generate-notices.mjs",
     "package:release": "bun run build && bun run licenses:report && node scripts/package-release.mjs",
     "package:archive": "bun run build && node scripts/package-release.mjs",

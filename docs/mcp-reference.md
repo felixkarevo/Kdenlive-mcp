@@ -27,7 +27,7 @@ revision, changed IDs, warnings, and an undo token.
 | `timeline_ripple_delete`                                                            | Normalized batched ripple deletion                       |
 | `clip_set_properties`, `clip_set_keyframes`, `clip_set_effects`                     | Properties, animation, and clip effect stacks            |
 | `track_set_effects`, `project_set_master_effects`                                   | Video-track and whole-program effect stacks              |
-| `effect_catalog`                                                                    | Kdenlive color effects, raw MLT ranges, installed LUTs   |
+| `effect_catalog`                                                                    | Kdenlive video/audio effects, raw MLT ranges, LUT files  |
 | `transition_edit`                                                                   | Add/update/remove transitions                            |
 | `text_edit`, `caption_edit`, `caption_generate`, `marker_edit`                      | Add/update/remove or generate timed creative entities    |
 | `caption_export`                                                                    | Write SRT or WebVTT under project artifacts              |

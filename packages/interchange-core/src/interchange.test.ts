@@ -146,3 +146,49 @@ describe('Kdenlive effect export', () => {
     expect(parseInterchange(exported, 'kdenlive').project).toEqual(project);
   });
 });
+
+describe('Kdenlive effect zones', () => {
+  it('writes zoned master effects with zone-relative keyframes', () => {
+    const project = createProject('Zoned', {
+      id: '00000000-0000-4000-8000-000000000511',
+      now: new Date('2026-10-23T00:00:00.000Z'),
+    });
+    project.markers.push({
+      id: '00000000-0000-4000-8000-000000000512',
+      frame: 99,
+      kind: 'marker',
+      label: 'End',
+      color: '#ffffff',
+    });
+    project.captions.push({
+      id: '00000000-0000-4000-8000-000000000513',
+      start: 0,
+      end: 100,
+      text: 'Long caption',
+      style: { preset: 'default', position: 'bottom' },
+    });
+    project.masterEffects.push({
+      id: '00000000-0000-4000-8000-000000000514',
+      service: 'brightness',
+      kdenliveId: 'brightness',
+      enabled: true,
+      parameters: {},
+      keyframes: {
+        level: [
+          {
+            id: '00000000-0000-4000-8000-000000000515',
+            frame: 25,
+            value: 0.5,
+            interpolation: 'linear',
+          },
+        ],
+      },
+      zone: { start: 20, end: 40 },
+    });
+    const exported = exportInterchange(project, 'kdenlive').contents;
+    expect(exported).toContain(
+      '<filter id="effect-00000000-0000-4000-8000-000000000514" in="20" out="39">',
+    );
+    expect(exported).toContain('<property name="level">5=0.5</property>');
+  });
+});

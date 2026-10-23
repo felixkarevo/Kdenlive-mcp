@@ -89,6 +89,8 @@ export const effectSchema = z.object({
     z.union([z.number(), z.string(), z.boolean()]),
   ),
   keyframes: z.record(z.string(), z.array(keyframeSchema)),
+  /** Track or master effect zone in timeline frames, end exclusive. */
+  zone: z.object({ start: frameSchema, end: z.int().positive() }).optional(),
 });
 
 export const clipSchema = z.object({

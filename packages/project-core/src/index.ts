@@ -132,14 +132,17 @@ export {
 export { commitEdit } from './edit-transaction.js';
 export {
   buildEffectCatalog,
+  effectMediaType,
   effectParameterIssues,
   fileParameterNames,
   findKdenliveEffect,
+  isGpuOnlyService,
   listKdenliveEffects,
   resolveKdenliveEffect,
   type EffectCatalog,
   type EffectCatalogEntry,
   type EffectCategory,
+  type EffectMediaType,
   type EffectParameterDefinition,
   type EffectParameterIssue,
   type EffectParameterType,

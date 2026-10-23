@@ -1059,3 +1059,109 @@ describe('preview concurrency', () => {
     }
   });
 });
+
+describe('effect zones and audio track effects', () => {
+  it('limits zoned track and master effects to the zone frames', async () => {
+    const project = fixtureProject();
+    const track = project.tracks[0];
+    const clip = track?.clips[0];
+    if (track === undefined || clip === undefined)
+      throw new Error('fixture timeline missing');
+    track.effects = [
+      {
+        id: '00000000-0000-4000-8000-000000000411',
+        service: 'avfilter.gblur',
+        kdenliveId: 'avfilter.gblur',
+        enabled: true,
+        parameters: { 'av.sigma': 4 },
+        keyframes: {},
+        zone: { start: 30, end: 60 },
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000412',
+        service: 'avfilter.negate',
+        kdenliveId: 'avfilter.negate',
+        enabled: true,
+        parameters: {},
+        keyframes: {},
+        zone: { start: 200, end: 250 },
+      },
+    ];
+    project.masterEffects = [
+      {
+        id: '00000000-0000-4000-8000-000000000413',
+        service: 'brightness',
+        kdenliveId: 'brightness',
+        enabled: true,
+        parameters: {},
+        keyframes: {
+          level: [
+            {
+              id: '00000000-0000-4000-8000-000000000414',
+              frame: 10,
+              value: 0.5,
+              interpolation: 'linear',
+            },
+            {
+              id: '00000000-0000-4000-8000-000000000415',
+              frame: 20,
+              value: 1,
+              interpolation: 'linear',
+            },
+          ],
+        },
+        zone: { start: 10, end: 21 },
+      },
+    ];
+    const { xml } = await compileProject(project, {
+      projectRoot: resolve('fixtures'),
+    });
+    expect(xml).toContain(
+      `<filter id="effect-00000000-0000-4000-8000-000000000411-${clip.id}" in="30" out="59">`,
+    );
+    // The negate zone lies after the clip, so the clip gets no filter.
+    expect(xml).not.toContain('effect-00000000-0000-4000-8000-000000000412');
+    expect(xml).toContain(
+      '<filter id="effect-00000000-0000-4000-8000-000000000413" in="10" out="20">',
+    );
+    expect(xml).toContain('<property name="level">0=0.5;10=1</property>');
+  });
+
+  it('applies audio track effects to clips on audio tracks', async () => {
+    const project = fixtureProject();
+    const videoTrack = project.tracks[0];
+    const clip = videoTrack?.clips[0];
+    if (videoTrack === undefined || clip === undefined)
+      throw new Error('fixture timeline missing');
+    project.tracks.push({
+      ...videoTrack,
+      id: '00000000-0000-4000-8000-000000000421',
+      name: 'A1',
+      kind: 'audio',
+      clips: [
+        { ...clip, id: '00000000-0000-4000-8000-000000000422', effects: [] },
+      ],
+      effects: [
+        {
+          id: '00000000-0000-4000-8000-000000000423',
+          service: 'volume',
+          kdenliveId: 'volume',
+          enabled: true,
+          parameters: { level: -6 },
+          keyframes: {},
+        },
+      ],
+    });
+    const { xml } = await compileProject(project, {
+      projectRoot: resolve('fixtures'),
+    });
+    const start = xml.indexOf(
+      '<producer id="producer-00000000-0000-4000-8000-000000000422"',
+    );
+    const producer = xml.slice(start, xml.indexOf('</producer>', start));
+    expect(producer).toContain(
+      'effect-00000000-0000-4000-8000-000000000423-00000000-0000-4000-8000-000000000422',
+    );
+    expect(producer).toContain('<property name="level">-6</property>');
+  });
+});

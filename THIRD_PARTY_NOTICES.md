@@ -14,7 +14,7 @@ application distribution.
 | MCP TypeScript SDK | MCP protocol transports and schemas    | MIT                                         | Retain license notice and pin the tested protocol version               |
 | Python packages    | Analysis worker dependencies           | Per lockfile                                | Generate license report and SBOM for every release                      |
 
-`packages/project-core/src/kdenlive-color-effects.generated.ts` records interface
+`packages/project-core/src/kdenlive-effects.generated.ts` records interface
 metadata (effect IDs, MLT property names, labels, ranges, and defaults) extracted
 from Kdenlive's effect definitions so that projects stay compatible with Kdenlive.
 No Kdenlive source code or descriptive text is included.

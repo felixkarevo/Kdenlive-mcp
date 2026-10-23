@@ -1,7 +1,12 @@
 import { access, realpath } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 
-import { effectParameterIssues, fileParameterNames } from './effect-catalog.js';
+import {
+  effectMediaType,
+  effectParameterIssues,
+  fileParameterNames,
+  isGpuOnlyService,
+} from './effect-catalog.js';
 import { clipDurationFrames } from './frame-math.js';
 import {
   projectSchema,
@@ -112,7 +117,9 @@ function fileParameters(effect: Effect): [string, string][] {
       effect.parameters[name],
       ...(effect.keyframes[name] ?? []).map((keyframe) => keyframe.value),
     ]
-      .filter((value): value is string => typeof value === 'string')
+      .filter(
+        (value): value is string => typeof value === 'string' && value !== '',
+      )
       .map((value): [string, string] => [name, value]),
   );
 }
@@ -144,6 +151,20 @@ function effectDiagnostics(
       ),
     );
   }
+  if (isGpuOnlyService(effect.service))
+    output.push(
+      diagnostic(
+        'EFFECT_GPU_ONLY',
+        'warning',
+        `${effect.service} only runs in Kdenlive's GPU pipeline; MCP previews and exports skip it`,
+        path,
+        {
+          entityId: effect.id,
+          relatedIds,
+          hint: 'Use a CPU effect instead, such as lift_gamma_gain, avfilter.gblur, or frei0r.glow.',
+        },
+      ),
+    );
   for (const issue of effectParameterIssues(effect)) {
     output.push(
       diagnostic(
@@ -182,6 +203,16 @@ function effectStackDiagnostics(
   const output: ProjectDiagnostic[] = [];
   effects.forEach((effect, effectIndex) => {
     const effectPath = `${path}.${String(effectIndex)}`;
+    if (effect.zone !== undefined && effect.zone.end <= effect.zone.start)
+      output.push(
+        diagnostic(
+          'EFFECT_ZONE_INVALID',
+          'error',
+          'Effect zone end must be after start',
+          `${effectPath}.zone`,
+          { entityId: effect.id, relatedIds: [ownerId] },
+        ),
+      );
     for (const [property, values] of Object.entries(effect.keyframes)) {
       const frames = new Set<number>();
       for (const keyframe of values) {
@@ -320,6 +351,16 @@ function validateClip(
     );
   }
   for (const [effectIndex, effect] of clip.effects.entries()) {
+    if (effect.zone !== undefined)
+      output.push(
+        diagnostic(
+          'EFFECT_ZONE_UNSUPPORTED',
+          'error',
+          'Effect zones apply to track and master effects only',
+          `${path}.effects.${String(effectIndex)}.zone`,
+          { entityId: effect.id, relatedIds: [clip.id] },
+        ),
+      );
     validateKeyframeMap(
       effect.keyframes,
       `${path}.effects.${String(effectIndex)}.keyframes`,
@@ -733,16 +774,19 @@ export async function validateProject(
         options.capabilities,
       ),
     );
-    if (track.kind === 'audio' && track.effects.length > 0)
-      output.push(
-        diagnostic(
-          'TRACK_EFFECT_KIND',
-          'warning',
-          'Track effects are only rendered on video tracks',
-          `tracks.${String(trackIndex)}.effects`,
-          { entityId: track.id },
-        ),
-      );
+    track.effects.forEach((effect, effectIndex) => {
+      const mediaType = effectMediaType(effect.service, effect.kdenliveId);
+      if (mediaType !== undefined && mediaType !== track.kind)
+        output.push(
+          diagnostic(
+            'TRACK_EFFECT_KIND',
+            'warning',
+            `${mediaType} effect ${effect.kdenliveId ?? effect.service} has no effect on a ${track.kind} track`,
+            `tracks.${String(trackIndex)}.effects.${String(effectIndex)}`,
+            { entityId: effect.id, relatedIds: [track.id] },
+          ),
+        );
+    });
   });
   output.push(
     ...effectStackDiagnostics(

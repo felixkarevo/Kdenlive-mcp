@@ -18,9 +18,10 @@ Each tool replaces the whole ordered stack. Pass an empty array to clear it.
 
 ## Choosing effects and values
 
-`effect_catalog` lists the 59 effects with their Kdenlive ID, MLT service, and
-whether the installed MLT runtime provides them. Pass `kdenliveId` to get the
-full parameter list:
+`effect_catalog` with `category: "color"` lists the 59 effects with their
+Kdenlive ID, MLT service, and whether the installed MLT runtime provides them.
+Pass `kdenliveId` to get the full parameter list (see also the
+[effects guide](effects.md)):
 
 - Values are raw MLT property values. Kdenlive's UI often scales them: for
   `lift_gamma_gain`, Kdenlive shows `gain_r` as 0-500 while MLT stores 0-5.
@@ -81,7 +82,7 @@ plus modules, which ship with standard MLT builds.
 
 ## Catalog maintenance
 
-`packages/project-core/src/kdenlive-color-effects.generated.ts` is generated from
+`packages/project-core/src/kdenlive-effects.generated.ts` is generated from
 a local Kdenlive installation's effect definitions:
 
 ```shell

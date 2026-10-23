@@ -46,7 +46,9 @@ edits transform those local frame coordinates when trims, splits, or speed chang
 Effects store the MLT `service`, an optional Kdenlive `kdenliveId` (needed when
 the two differ, such as `frei0r.bezier_curves` on `frei0r.curves`), raw MLT
 `parameters`, and `keyframes`. Track effects apply to every clip on a video track
-and master effects to the whole program; both use timeline-frame keyframes.
+and master effects to the whole program; both use timeline-frame keyframes and
+may carry an optional `zone` (`start`, exclusive `end`) that limits the effect
+to part of the timeline.
 Projects written before track and master effects existed load with empty stacks.
 
 ## Persistence and revisions

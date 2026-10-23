@@ -70,18 +70,41 @@ import {
   probeCapabilities,
 } from '@kdenlive-mcp/runtime-probe';
 
-/** Directories where Kdenlive installs and downloads 3D LUT files. */
-export function kdenliveLutDirectories(): string[] {
+/** Existing Kdenlive data directories that hold the named resource kind. */
+function kdenliveDataDirectories(kind: 'luts' | 'lumas'): string[] {
   const home = homedir();
   return [
-    join(home, '.local/share/kdenlive/luts'),
-    join(home, 'snap/kdenlive/current/.local/share/kdenlive/luts'),
-    join(home, '.var/app/org.kde.kdenlive/data/kdenlive/luts'),
-    '/usr/share/kdenlive/luts',
-    '/usr/local/share/kdenlive/luts',
-    '/snap/kdenlive/current/usr/share/kdenlive/luts',
-    '/var/lib/flatpak/app/org.kde.kdenlive/current/active/files/share/kdenlive/luts',
-  ].filter((path) => existsSync(path));
+    join(home, '.local/share/kdenlive'),
+    join(home, 'snap/kdenlive/current/.local/share/kdenlive'),
+    join(home, '.var/app/org.kde.kdenlive/data/kdenlive'),
+    '/usr/share/kdenlive',
+    '/usr/local/share/kdenlive',
+    '/snap/kdenlive/current/usr/share/kdenlive',
+    '/var/lib/flatpak/app/org.kde.kdenlive/current/active/files/share/kdenlive',
+  ]
+    .map((root) => join(root, kind))
+    .filter((path) => existsSync(path));
+}
+
+/** Directories where Kdenlive installs and downloads 3D LUT files. */
+export function kdenliveLutDirectories(): string[] {
+  return kdenliveDataDirectories('luts');
+}
+
+// Parameter names that make MLT or FFmpeg filters read a file, even when the
+// service is not in the Kdenlive catalog.
+const FILE_PARAMETER_NAME =
+  /(?:^|\.)(?:resource|file|filename|textfile|fontfile|f|sofa|stats_file|lut|luma|warp_resource)$/u;
+const URL_VALUE = /^[a-z][\w+.-]*:\/\//iu;
+const NUMERIC_VALUE = /^-?\d+(?:\.\d+)?$/u;
+
+function looksLikePath(value: string): boolean {
+  return (
+    isAbsolute(value) ||
+    value.startsWith('~') ||
+    value.startsWith('file:') ||
+    /(?:^|[\\/])\.\.(?:[\\/]|$)/u.test(value)
+  );
 }
 
 function withoutEffects(project: Project): Project {
@@ -878,44 +901,89 @@ export class WorkspaceService {
   async effectCatalog(input: {
     readonly kdenliveId?: string;
     readonly query?: string;
+    readonly category?: string;
+    readonly mediaType?: 'video' | 'audio';
     readonly availableOnly?: boolean;
+    readonly includeDeprecated?: boolean;
   }) {
     const capabilities = await this.capabilities();
     const filters = capabilities.mlt.available
       ? capabilities.mlt.filters
       : undefined;
-    const listing = listKdenliveEffects(
-      filters === undefined ? {} : { availableFilters: filters },
-    );
-    const luts = await Promise.all(
-      kdenliveLutDirectories().map(async (directory) => ({
-        directory,
-        files: (await readdir(directory))
-          .filter((name) => /\.(cube|3dl|dat|m3d)$/iu.test(name))
-          .sort()
-          .map((name) => join(directory, name)),
-      })),
-    );
+    const runtime =
+      filters === undefined
+        ? {}
+        : {
+            availableFilters: filters,
+            availableTransitions: capabilities.mlt.transitions,
+          };
+    const luts = async () =>
+      await Promise.all(
+        kdenliveLutDirectories().map(async (directory) => ({
+          directory,
+          files: (await readdir(directory))
+            .filter((name) => /\.(cube|3dl|dat|m3d)$/iu.test(name))
+            .sort()
+            .map((name) => join(directory, name)),
+        })),
+      );
     if (input.kdenliveId !== undefined) {
       const definition = findKdenliveEffect(input.kdenliveId);
       if (definition === undefined)
         throw new Error(`Kdenlive effect not found: ${input.kdenliveId}`);
-      const entry = listing.find(
+      const entry = listKdenliveEffects(runtime).find(
         (item) => item.kdenliveId === definition.kdenliveId,
       );
       return {
         effect: entry,
-        ...(definition.service === 'avfilter.lut3d' ? { luts } : {}),
+        ...(definition.service === 'avfilter.lut3d'
+          ? { luts: await luts() }
+          : {}),
       };
     }
+    const listing = listKdenliveEffects({
+      ...runtime,
+      ...(input.mediaType === undefined ? {} : { mediaType: input.mediaType }),
+      includeDeprecated: input.includeDeprecated === true,
+    });
+    const grouped = new Map<string, typeof listing>();
+    for (const item of listing)
+      grouped.set(item.category, [...(grouped.get(item.category) ?? []), item]);
+    const categories = [...grouped.entries()]
+      .map(([category, items]) => ({
+        category,
+        mediaType: items[0]?.mediaType,
+        count: items.length,
+        available: items.filter((item) => item.available !== false).length,
+      }))
+      .sort((left, right) => left.category.localeCompare(right.category));
+    const unavailable = listing.filter((item) => item.available === false);
+    const summary = {
+      runtimeChecked: filters !== undefined,
+      total: listing.length,
+      unavailableCount: unavailable.length,
+      ...(unavailable.some((item) => item.service.startsWith('frei0r.'))
+        ? {
+            hint: 'Some frei0r effects are unavailable to this MLT runtime; install the frei0r plugins (for example the frei0r-plugins package) to enable them.',
+          }
+        : {}),
+      categories,
+    };
+    if (input.category === undefined && input.query === undefined)
+      return {
+        ...summary,
+        next: 'Pass category or query to list effects, then kdenliveId for parameters.',
+      };
     const query = input.query?.toLowerCase();
     const effects = listing
       .filter(
         (item) =>
+          (input.category === undefined || item.category === input.category) &&
           (input.availableOnly !== true || item.available !== false) &&
           (query === undefined ||
             item.kdenliveId.toLowerCase().includes(query) ||
             item.displayName.toLowerCase().includes(query) ||
+            item.category.includes(query) ||
             item.parameters.some((parameter) =>
               (parameter.label ?? parameter.name).toLowerCase().includes(query),
             )),
@@ -925,38 +993,76 @@ export class WorkspaceService {
         service: item.service,
         displayName: item.displayName,
         category: item.category,
+        mediaType: item.mediaType,
         available: item.available,
+        ...(item.deprecated === true ? { deprecated: true } : {}),
         parameters: item.parameters.map((parameter) => parameter.name),
       }));
     return {
-      category: 'color',
-      runtimeChecked: filters !== undefined,
-      unavailableCount: listing.filter((item) => item.available === false)
-        .length,
-      ...(listing.some(
-        (item) =>
-          item.available === false && item.service.startsWith('frei0r.'),
-      )
-        ? {
-            hint: 'frei0r effects are unavailable to this MLT runtime; install the frei0r plugins (for example the frei0r-plugins package) to enable them.',
-          }
-        : {}),
+      ...summary,
       effects,
-      luts,
+      ...(input.category === 'color' ||
+      effects.some((effect) => effect.service === 'avfilter.lut3d')
+        ? { luts: await luts() }
+        : {}),
     };
   }
 
-  /** Rejects effect file parameters (such as LUTs) outside readable roots. */
+  /**
+   * Fails closed on filter parameters that could make Melt or FFmpeg read
+   * files outside the configured roots: known file parameters, file-like
+   * parameter names on any service, path-like values, and URLs.
+   */
+  assertSafeParameters(
+    service: string,
+    parameters: Readonly<Record<string, unknown>> = {},
+    keyframes: Readonly<
+      Record<string, readonly { readonly value: unknown }[]>
+    > = {},
+  ): void {
+    const roots = [
+      ...this.allowedRoots,
+      ...kdenliveLutDirectories(),
+      ...kdenliveDataDirectories('lumas'),
+    ].flatMap((root) => {
+      try {
+        return [realpathSync(root)];
+      } catch {
+        return [];
+      }
+    });
+    const catalogFiles = new Set(fileParameterNames(service));
+    const entries: [string, unknown][] = [
+      ...Object.entries(parameters),
+      ...Object.entries(keyframes).flatMap(([name, values]) =>
+        values.map((keyframe): [string, unknown] => [name, keyframe.value]),
+      ),
+    ];
+    for (const [name, value] of entries) {
+      if (typeof value !== 'string' || value === '') continue;
+      if (URL_VALUE.test(value))
+        throw new Error(`${service}.${name} must not be a URL`);
+      const fileParameter =
+        catalogFiles.has(name) ||
+        (FILE_PARAMETER_NAME.test(name) && !NUMERIC_VALUE.test(value));
+      if (!fileParameter && !looksLikePath(value)) continue;
+      if (!isAbsolute(value))
+        throw new Error(`${service}.${name} must be an absolute path`);
+      let candidate: string;
+      try {
+        candidate = realpathSync(value);
+      } catch {
+        throw new Error(`Effect file not found: ${value}`);
+      }
+      if (!roots.some((root) => contains(root, candidate)))
+        throw new Error(
+          `Path is outside configured roots: ${value}. Use a file under an allowed root or a Kdenlive LUT or luma directory.`,
+        );
+    }
+  }
+
+  /** Applies assertSafeParameters to every effect in a stack. */
   assertEffectFiles(effects: readonly EffectInput[]): void {
-    const roots = [...this.allowedRoots, ...kdenliveLutDirectories()].flatMap(
-      (root) => {
-        try {
-          return [realpathSync(root)];
-        } catch {
-          return [];
-        }
-      },
-    );
     for (const effect of effects) {
       let service: string;
       try {
@@ -968,27 +1074,7 @@ export class WorkspaceService {
       } catch {
         continue; // The edit itself rejects unresolvable effects.
       }
-      for (const name of fileParameterNames(service)) {
-        const values = [
-          effect.parameters?.[name],
-          ...(effect.keyframes?.[name] ?? []).map((keyframe) => keyframe.value),
-        ];
-        for (const value of values) {
-          if (value === undefined || value === '') continue;
-          if (typeof value !== 'string' || !isAbsolute(value))
-            throw new Error(`${service}.${name} must be an absolute path`);
-          let candidate: string;
-          try {
-            candidate = realpathSync(value);
-          } catch {
-            throw new Error(`Effect file not found: ${value}`);
-          }
-          if (!roots.some((root) => contains(root, candidate)))
-            throw new Error(
-              `Path is outside configured roots: ${value}. Use a file under an allowed root or a Kdenlive LUT directory.`,
-            );
-        }
-      }
+      this.assertSafeParameters(service, effect.parameters, effect.keyframes);
     }
   }
 

@@ -1,4 +1,4 @@
-import { KDENLIVE_COLOR_EFFECTS } from './kdenlive-color-effects.generated.js';
+import { KDENLIVE_EFFECTS } from './kdenlive-effects.generated.js';
 
 export type EffectParameterType =
   'number' | 'string' | 'boolean' | 'color' | 'list' | 'file';
@@ -30,13 +30,21 @@ export interface EffectParameterDefinition {
   readonly animatable: boolean;
 }
 
-export type EffectCategory = 'color';
+/** Slug of a Kdenlive effect category, such as color or blur-and-sharpen. */
+export type EffectCategory = string;
+
+export type EffectMediaType = 'video' | 'audio';
 
 export interface KdenliveEffectDefinition {
   readonly kdenliveId: string;
   readonly service: string;
   readonly displayName: string;
   readonly category: EffectCategory;
+  readonly mediaType: EffectMediaType;
+  /** Listed in Kdenlive's Deprecated group; kept for older projects. */
+  readonly deprecated?: boolean;
+  /** Other MLT services the effect needs, such as shape for shape masks. */
+  readonly dependencies?: readonly string[];
   readonly kdenliveVersion?: number;
   readonly parameters: readonly EffectParameterDefinition[];
 }
@@ -69,9 +77,6 @@ const KNOWN_PARAMETERS: Readonly<
   ],
   mix: [{ name: 'sum', type: 'boolean', default: true, animatable: false }],
 };
-
-const KDENLIVE_EFFECTS: readonly KdenliveEffectDefinition[] =
-  KDENLIVE_COLOR_EFFECTS;
 
 function displayName(service: string): string {
   return service
@@ -113,21 +118,58 @@ export function fileParameterNames(service: string): string[] {
 export interface KdenliveEffectListing extends KdenliveEffectDefinition {
   /** Null when no runtime capability snapshot was supplied. */
   readonly available: boolean | null;
+  /** Movit GPU effects only run inside Kdenlive's OpenGL pipeline. */
+  readonly gpuOnly?: true;
+}
+
+/** Movit filters pass frames through unchanged in headless Melt renders. */
+export function isGpuOnlyService(service: string): boolean {
+  return service.startsWith('movit.');
 }
 
 export function listKdenliveEffects(
   options: {
     readonly availableFilters?: readonly string[];
+    /** Transitions some effects depend on, such as mask_apply's compositor. */
+    readonly availableTransitions?: readonly string[];
+    readonly category?: EffectCategory;
+    readonly mediaType?: EffectMediaType;
+    readonly includeDeprecated?: boolean;
   } = {},
 ): KdenliveEffectListing[] {
   const available =
     options.availableFilters === undefined
       ? null
       : new Set(options.availableFilters);
-  return KDENLIVE_EFFECTS.map((effect) => ({
+  const transitions = new Set(options.availableTransitions ?? []);
+  return KDENLIVE_EFFECTS.filter(
+    (effect) =>
+      (options.category === undefined ||
+        effect.category === options.category) &&
+      (options.mediaType === undefined ||
+        effect.mediaType === options.mediaType) &&
+      (options.includeDeprecated !== false || effect.deprecated !== true),
+  ).map((effect) => ({
     ...effect,
-    available: available === null ? null : available.has(effect.service),
+    ...(isGpuOnlyService(effect.service) ? { gpuOnly: true as const } : {}),
+    available:
+      available === null
+        ? null
+        : !isGpuOnlyService(effect.service) &&
+          available.has(effect.service) &&
+          (effect.dependencies ?? []).every(
+            (service) => available.has(service) || transitions.has(service),
+          ),
   }));
+}
+
+/** Media type of a known Kdenlive effect or MLT service, if any. */
+export function effectMediaType(
+  service: string,
+  kdenliveId?: string,
+): EffectMediaType | undefined {
+  const definition = findKdenliveEffect(kdenliveId ?? service);
+  return definition?.service === service ? definition.mediaType : undefined;
 }
 
 export function buildEffectCatalog(input: {

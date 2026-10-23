@@ -18,6 +18,9 @@ outputs using the Kdenlive/MLT and FFmpeg installation already on your computer.
 - Media ingest with allowed-root containment and managed/external modes.
 - Clip placement, linked A/V, ripple edits, properties, keyframes, effects,
   transitions, text, captions, and markers.
+- Every Kdenlive video and audio effect (blur, keying and masks, transform,
+  stylize, audio EQ and dynamics, and more) on clips, tracks, and the master
+  output, with effect zones. See the [effects guide](docs/effects.md).
 - Color correction and grading with all of Kdenlive's Color and Image Correction
   effects (lift/gamma/gain, curves, levels, white balance, 3D LUTs, HSL, and more)
   on clips, tracks, and the master output, plus color scopes and measurements.

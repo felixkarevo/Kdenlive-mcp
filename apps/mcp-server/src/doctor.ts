@@ -87,8 +87,37 @@ export async function runDoctor(): Promise<DoctorReport> {
     );
   }
   if (capabilities.mlt.available) {
+    const allEffects = listKdenliveEffects({
+      availableFilters: capabilities.mlt.filters,
+      availableTransitions: capabilities.mlt.transitions,
+      includeDeprecated: false,
+    });
+    const unavailable = allEffects.filter(
+      (effect) => effect.available === false,
+    );
+    checks.push({
+      id: 'effects',
+      status: unavailable.length === 0 ? 'pass' : 'warning',
+      message:
+        unavailable.length === 0
+          ? `All ${String(allEffects.length)} Kdenlive effects are available`
+          : `${String(allEffects.length - unavailable.length)} of ${String(allEffects.length)} Kdenlive effects are available; unavailable by category: ${[
+              ...new Set(unavailable.map((effect) => effect.category)),
+            ]
+              .map(
+                (category) =>
+                  `${category} ${String(unavailable.filter((effect) => effect.category === category).length)}`,
+              )
+              .join(', ')}`,
+      ...(unavailable.length === 0
+        ? {}
+        : {
+            fix: 'Optional: install MLT plugin packages for the missing effects (frei0r-plugins for frei0r.*, LADSPA plugin packs such as swh-plugins and tap-plugins for ladspa.*, GPU effects only run inside Kdenlive and are never available to headless renders).',
+          }),
+    });
     const colorEffects = listKdenliveEffects({
       availableFilters: capabilities.mlt.filters,
+      category: 'color',
     });
     const missing = colorEffects.filter((effect) => effect.available === false);
     const missingFrei0r = missing.some((effect) =>

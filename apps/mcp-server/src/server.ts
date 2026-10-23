@@ -102,7 +102,7 @@ const effectInputSchema = z
       .min(1)
       .optional()
       .describe(
-        'Kdenlive effect ID from effect_catalog, e.g. lift_gamma_gain or avfilter.lut3d.',
+        'Kdenlive effect ID from effect_catalog, e.g. lift_gamma_gain, avfilter.gblur, or volume.',
       ),
     service: z
       .string()
@@ -135,6 +135,16 @@ const effectInputSchema = z
       .boolean()
       .optional()
       .describe('Write Kdenlive defaults for unset parameters (default true).'),
+    zone: z
+      .object({
+        start: z.number().int().nonnegative(),
+        end: z.number().int().positive(),
+      })
+      .strict()
+      .optional()
+      .describe(
+        'Track and master effects only: limit the effect to timeline frames [start, end), like a Kdenlive effect zone.',
+      ),
   })
   .strict()
   .refine(
@@ -702,7 +712,7 @@ export function createMcpServer(options: ServerSessionOptions): McpServer {
   );
   mutation(
     'clip_set_effects',
-    'Replace an ordered clip effect stack (color grading, LUTs, any MLT filter). Use effect_catalog for Kdenlive effect IDs and raw MLT parameter ranges. Clip keyframes use clip-relative frames.',
+    'Replace an ordered clip effect stack with any Kdenlive video or audio effect (color, blur, keying and masks, transform, stylize, audio EQ and dynamics, and more) or raw MLT filter. Use effect_catalog for Kdenlive effect IDs and raw MLT parameter ranges. Clip keyframes use clip-relative frames.',
     { clipId: entityId, effects: effectStackSchema },
     async (project, input) => {
       workspace.assertEffectFiles(input.effects as readonly EffectInput[]);
@@ -715,7 +725,7 @@ export function createMcpServer(options: ServerSessionOptions): McpServer {
   );
   mutation(
     'track_set_effects',
-    'Replace an ordered video-track effect stack applied to every clip on the track, like Kdenlive track effects. Keyframes use timeline frames.',
+    'Replace an ordered track effect stack applied to every clip on the track, like Kdenlive track effects: video effects on video tracks, audio effects on audio tracks. Keyframes and zones use timeline frames.',
     { trackId: entityId, effects: effectStackSchema },
     async (project, input) => {
       workspace.assertEffectFiles(input.effects as readonly EffectInput[]);
@@ -728,7 +738,7 @@ export function createMcpServer(options: ServerSessionOptions): McpServer {
   );
   mutation(
     'project_set_master_effects',
-    'Replace the master effect stack applied to the whole composited program (including titles and captions), like Kdenlive master effects. Keyframes use timeline frames.',
+    'Replace the master effect stack applied to the whole composited program (video including titles and captions, and the audio mix), like Kdenlive master effects. Keyframes and zones use timeline frames.',
     { effects: effectStackSchema },
     async (project, input) => {
       workspace.assertEffectFiles(input.effects as readonly EffectInput[]);
@@ -748,6 +758,17 @@ export function createMcpServer(options: ServerSessionOptions): McpServer {
       transition: unknownRecord.optional(),
     },
     async (project, input) => {
+      const transition = input.transition as
+        { service?: unknown; parameters?: Record<string, unknown> } | undefined;
+      if (transition !== undefined)
+        workspace.assertSafeParameters(
+          typeof transition.service === 'string'
+            ? transition.service
+            : (project.transitions.find(
+                (item) => item.id === input.transitionId,
+              )?.service ?? ''),
+          transition.parameters ?? {},
+        );
       if (input.action === 'add')
         return await addTransition(
           project,
@@ -1120,21 +1141,41 @@ export function createMcpServer(options: ServerSessionOptions): McpServer {
     'effect_catalog',
     {
       description:
-        'List Kdenlive Color and Image Correction effects with MLT service, availability in the installed runtime, and installed LUT files; pass kdenliveId for full parameter names, raw MLT ranges, defaults, options, and keyframe support.',
+        'Browse all Kdenlive video and audio effects. With no filters it returns category counts; pass category or query for matching effects with MLT service and availability in the installed runtime; pass kdenliveId for full parameter names, raw MLT ranges, defaults, options, and keyframe support. Color listings include installed LUT files.',
       inputSchema: {
         kdenliveId: z.string().min(1).optional(),
+        category: z
+          .string()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe(
+            'Category slug from the summary, e.g. color or blur-and-sharpen.',
+          ),
         query: z.string().min(1).max(100).optional(),
+        mediaType: z.enum(['video', 'audio']).optional(),
         availableOnly: z.boolean().optional(),
+        includeDeprecated: z.boolean().optional(),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    ({ kdenliveId, query, availableOnly }) =>
+    ({
+      kdenliveId,
+      category,
+      query,
+      mediaType,
+      availableOnly,
+      includeDeprecated,
+    }) =>
       guarded(
         async () =>
           await workspace.effectCatalog({
             ...(kdenliveId === undefined ? {} : { kdenliveId }),
+            ...(category === undefined ? {} : { category }),
             ...(query === undefined ? {} : { query }),
+            ...(mediaType === undefined ? {} : { mediaType }),
             ...(availableOnly === undefined ? {} : { availableOnly }),
+            ...(includeDeprecated === undefined ? {} : { includeDeprecated }),
           }),
       ),
   );

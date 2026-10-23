@@ -16,6 +16,7 @@ interface Envelope {
   readonly data?: Record<string, unknown>;
   readonly error?: {
     readonly code: string;
+    readonly message?: string;
     readonly details?: {
       readonly retryable?: boolean;
       readonly diagnostics?: readonly {
@@ -222,6 +223,52 @@ describe('Milestone 4 MCP protocol', () => {
       );
       expect(rejected.error?.code).toBe('PATH_OUTSIDE_ROOTS');
     }
+    for (const effect of [
+      // Raw services outside the catalog are checked by parameter name.
+      { service: 'avfilter.movie', parameters: { 'av.filename': secret } },
+      // Path-like values are checked on any parameter name.
+      { service: 'qtext', parameters: { argument: secret } },
+    ]) {
+      const rejected = envelope(
+        await client.callTool({
+          name: 'project_set_master_effects',
+          arguments: { projectId: id, expectedRevision: 2, effects: [effect] },
+        }),
+      );
+      expect(rejected.error?.code).toBe('PATH_OUTSIDE_ROOTS');
+    }
+    const relative = envelope(
+      await client.callTool({
+        name: 'project_set_master_effects',
+        arguments: {
+          projectId: id,
+          expectedRevision: 2,
+          effects: [
+            {
+              service: 'avfilter.movie',
+              parameters: { 'av.filename': 'x.mp4' },
+            },
+          ],
+        },
+      }),
+    );
+    expect(relative.error?.message).toContain('absolute path');
+    const url = envelope(
+      await client.callTool({
+        name: 'project_set_master_effects',
+        arguments: {
+          projectId: id,
+          expectedRevision: 2,
+          effects: [
+            {
+              service: 'avfilter.movie',
+              parameters: { 'av.filename': 'http://example.com/a.mp4' },
+            },
+          ],
+        },
+      }),
+    );
+    expect(url.error?.message).toContain('must not be a URL');
     const lut = join(root, 'look.cube');
     await writeFile(
       lut,

@@ -6,6 +6,7 @@ import {
   TimelineEditError,
 } from './editing.js';
 import {
+  effectMediaType,
   effectParameterIssues,
   resolveKdenliveEffect,
 } from './effect-catalog.js';
@@ -37,6 +38,8 @@ export interface EffectInput {
   readonly keyframes?: Readonly<Record<string, readonly EffectKeyframeInput[]>>;
   /** Fill Kdenlive defaults for unset catalog parameters (default true). */
   readonly fillDefaults?: boolean;
+  /** Limit a track or master effect to timeline frames [start, end). */
+  readonly zone?: { readonly start: number; readonly end: number };
 }
 
 function effectStack(effects: readonly EffectInput[]): {
@@ -90,6 +93,9 @@ function effectStack(effects: readonly EffectInput[]): {
       enabled: effect.enabled ?? true,
       parameters: resolved.parameters,
       keyframes,
+      ...(effect.zone === undefined
+        ? {}
+        : { zone: { start: effect.zone.start, end: effect.zone.end } }),
     };
   });
   const warnings = stack.flatMap((effect) =>
@@ -113,6 +119,13 @@ export async function setEffects(
       `Track is locked: ${track.id}`,
       [track.id],
     );
+  const zoned = effects.find((effect) => effect.zone !== undefined);
+  if (zoned !== undefined)
+    throw new TimelineEditError(
+      'EFFECT_ZONE_UNSUPPORTED',
+      'Effect zones apply to track and master effects; trim or split the clip instead.',
+      zoned.id === undefined ? [clip.id] : [zoned.id],
+    );
   const stack = effectStack(effects);
   clip.effects = stack.effects;
   return await finalizeEdit(
@@ -135,13 +148,17 @@ export async function setTrackEffects(
       `Track is locked: ${track.id}`,
       [track.id],
     );
-  if (track.kind !== 'video' && effects.length > 0)
+  const stack = effectStack(effects);
+  const mismatched = stack.effects.find((effect) => {
+    const mediaType = effectMediaType(effect.service, effect.kdenliveId);
+    return mediaType !== undefined && mediaType !== track.kind;
+  });
+  if (mismatched !== undefined)
     throw new TimelineEditError(
       'TRACK_KIND_MISMATCH',
-      `Video effects require a video track: ${track.id}`,
-      [track.id],
+      `${mismatched.kdenliveId ?? mismatched.service} is not a ${track.kind} effect; put it on a ${track.kind === 'video' ? 'audio' : 'video'} track or the master.`,
+      [track.id, mismatched.id],
     );
-  const stack = effectStack(effects);
   track.effects = stack.effects;
   return await finalizeEdit(project, [track.id, ...stack.ids], stack.warnings);
 }

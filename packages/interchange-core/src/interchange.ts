@@ -399,6 +399,26 @@ function kdenliveFilterLines(
   return lines;
 }
 
+/** Track/master filter range and keyframes re-based onto the effect zone. */
+function zonedFilterLines(effect: Effect, duration: number): string[] {
+  const start = Math.min(effect.zone?.start ?? 0, duration - 1);
+  const end = Math.min(effect.zone?.end ?? duration, duration);
+  const keyframes = Object.fromEntries(
+    Object.entries(effect.keyframes).map(([name, values]) => [
+      name,
+      values
+        .map((keyframe) => ({ ...keyframe, frame: keyframe.frame - start }))
+        .filter(
+          (keyframe) => keyframe.frame >= 0 && keyframe.frame < end - start,
+        ),
+    ]),
+  );
+  return kdenliveFilterLines({ ...effect, keyframes }, 4, {
+    in: start,
+    out: end - 1,
+  });
+}
+
 function exportKdenlive(project: Project, captionFileName: string): string {
   const duration = Math.max(
     1,
@@ -511,9 +531,7 @@ function exportKdenlive(project: Project, captionFileName: string): string {
       `    <track hide="${hide}" producer="playlist${String(firstPlaylist)}"/>`,
       `    <track hide="${hide}" producer="playlist${String(secondPlaylist)}"/>`,
       ...('effects' in track
-        ? track.effects.flatMap((effect) =>
-            kdenliveFilterLines(effect, 4, { in: 0, out: duration - 1 }),
-          )
+        ? track.effects.flatMap((effect) => zonedFilterLines(effect, duration))
         : []),
       '  </tractor>',
     );
@@ -572,9 +590,7 @@ function exportKdenlive(project: Project, captionFileName: string): string {
       '    </filter>',
     );
   for (const effect of project.masterEffects)
-    sequenceLines.push(
-      ...kdenliveFilterLines(effect, 4, { in: 0, out: duration - 1 }),
-    );
+    sequenceLines.push(...zonedFilterLines(effect, duration));
   sequenceLines.push('  </tractor>');
   const profileId =
     project.settings.width === 1920 &&

@@ -58,6 +58,17 @@ const definitions: readonly [
     COLOR_STEPS,
   ],
   [
+    'effects',
+    'Apply effects and filters',
+    [
+      'effect_catalog',
+      'clip_set_effects',
+      'track_set_effects',
+      'project_set_master_effects',
+      'preview_inspect',
+    ],
+  ],
+  [
     'youtube-long-form',
     'YouTube long-form delivery',
     ['marker_edit', 'render_submit'],

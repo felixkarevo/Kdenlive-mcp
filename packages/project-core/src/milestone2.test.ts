@@ -357,11 +357,12 @@ describe('properties and creative entities', () => {
       filters: ['volume', 'brightness'],
       transitions: ['luma'],
     });
-    expect(catalog.entries.map((entry) => entry.service)).toEqual([
-      'brightness',
-      'volume',
-      'luma',
-    ]);
+    expect([...new Set(catalog.entries.map((entry) => entry.service))]).toEqual(
+      ['brightness', 'volume', 'luma'],
+    );
+    expect(catalog.entries.map((entry) => entry.kdenliveId)).toEqual(
+      expect.arrayContaining(['brightness', 'volume']),
+    );
     expect(catalog.entries[0]).toMatchObject({
       service: 'brightness',
       rawPropertiesAllowed: true,
