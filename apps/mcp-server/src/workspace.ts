@@ -102,6 +102,22 @@ const NUMERIC_VALUE = /^-?\d+(?:\.\d+)?$/u;
 // larger option string, such as `x=/etc/passwd`.
 const EMBEDDED_PATH = /[\s=:;,'"(](?:\/(?=[^\s/])|~[\\/]|[a-z]:[\\/]|\\\\)/iu;
 
+// A `..` path segment after any delimiter, such as `textfile=../../x`.
+const PARENT_SEGMENT = /(?:^|[\s=:;,'"()[\]|\\/])\.\.(?:[\\/]|$)/u;
+
+// Filters that run nested filter commands from their options at render time.
+const COMMAND_SERVICES = new Set([
+  'avfilter.sendcmd',
+  'avfilter.asendcmd',
+  'avfilter.zmq',
+  'avfilter.azmq',
+]);
+
+/** Removes FFmpeg/MLT backslash escaping so `\/etc` is checked as `/etc`. */
+function unescapeOption(value: string): string {
+  return value.replace(/\\(.)/gu, '$1');
+}
+
 function looksLikePath(value: string): boolean {
   return (
     isAbsolute(value) ||
@@ -109,7 +125,7 @@ function looksLikePath(value: string): boolean {
     value.startsWith('file:') ||
     // Drive-relative paths such as C:file only exist on Windows.
     (process.platform === 'win32' && /^[a-z]:/iu.test(value)) ||
-    /(?:^|[\\/])\.\.(?:[\\/]|$)/u.test(value)
+    PARENT_SEGMENT.test(value)
   );
 }
 
@@ -1044,18 +1060,30 @@ export class WorkspaceService {
         values.map((keyframe): [string, unknown] => [name, keyframe.value]),
       ),
     ];
+    if (COMMAND_SERVICES.has(service))
+      throw new Error(
+        `${service} runs nested filter commands and is not allowed; apply the target effect directly with keyframes instead`,
+      );
     for (const [name, value] of entries) {
       if (typeof value !== 'string' || value === '') continue;
-      if (URL_VALUE.test(value))
+      // Detect on both the raw and the unescaped form; resolve the raw value,
+      // since Windows paths legitimately contain backslashes.
+      const forms = [value, unescapeOption(value)];
+      if (forms.some((form) => PARENT_SEGMENT.test(form)))
+        throw new Error(
+          `${service}.${name} must not contain a parent directory (..) segment`,
+        );
+      if (forms.some((form) => URL_VALUE.test(form)))
         throw new Error(`${service}.${name} must not be a URL`);
-      if (EMBEDDED_PATH.test(value) && !isAbsolute(value))
+      if (!isAbsolute(value) && forms.some((form) => EMBEDDED_PATH.test(form)))
         throw new Error(
           `${service}.${name} contains a file path; pass the path as its own parameter value`,
         );
       const fileParameter =
         catalogFiles.has(name) ||
         (FILE_PARAMETER_NAME.test(name) && !NUMERIC_VALUE.test(value));
-      if (!fileParameter && !looksLikePath(value)) continue;
+      if (!fileParameter && !forms.some((form) => looksLikePath(form)))
+        continue;
       if (!isAbsolute(value))
         throw new Error(`${service}.${name} must be an absolute path`);
       let candidate: string;

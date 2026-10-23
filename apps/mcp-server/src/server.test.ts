@@ -245,14 +245,43 @@ describe('Milestone 4 MCP protocol', () => {
           expectedRevision: 2,
           effects: [
             {
-              service: 'avfilter.sendcmd',
-              parameters: { 'av.c': `0 drawtext reinit textfile=${secret}` },
+              service: 'avfilter.drawtext',
+              parameters: { 'av.text': `see textfile=${secret}` },
             },
           ],
         },
       }),
     );
     expect(embedded.error?.message).toContain('contains a file path');
+    for (const [effect, message] of [
+      [
+        {
+          service: 'avfilter.drawtext',
+          parameters: { 'av.text': 'x', 'av.box': 'textfile=../../etc/passwd' },
+        },
+        'parent directory',
+      ],
+      [
+        {
+          service: 'avfilter.drawtext',
+          // FFmpeg unescapes \/ to /, so this embeds /etc/passwd.
+          parameters: { 'av.text': 'textfile=\\/etc/passwd' },
+        },
+        'contains a file path',
+      ],
+      [
+        { service: 'avfilter.sendcmd', parameters: {} },
+        'nested filter commands',
+      ],
+    ] as const) {
+      const rejected = envelope(
+        await client.callTool({
+          name: 'project_set_master_effects',
+          arguments: { projectId: id, expectedRevision: 2, effects: [effect] },
+        }),
+      );
+      expect(rejected.error?.message).toContain(message);
+    }
     const relative = envelope(
       await client.callTool({
         name: 'project_set_master_effects',
