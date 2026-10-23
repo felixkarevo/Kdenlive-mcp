@@ -2,7 +2,7 @@
   "name": "kdenlive-mcp",
   "version": "1.1.1",
   "private": true,
-  "description": "Headless, MLT-backed video editing foundation for MCP clients",
+  "description": "MCP server for Kdenlive: AI-driven video editing, effects, and color grading with MLT and FFmpeg",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
