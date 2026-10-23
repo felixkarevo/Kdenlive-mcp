@@ -49,6 +49,7 @@ export function createTrack(
     muted: false,
     hidden: false,
     clips: [],
+    effects: [],
   };
   project.tracks.push(track);
   return track;

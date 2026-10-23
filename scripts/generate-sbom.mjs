@@ -66,7 +66,7 @@ const spdx = {
   dataLicense: 'CC0-1.0',
   SPDXID: 'SPDXRef-DOCUMENT',
   name: `${packageJson.name}-${packageJson.version}`,
-  documentNamespace: `https://github.com/felixkarevo/Kdenlive-mcp/sbom/${createHash('sha256').update(timestamp).digest('hex')}`,
+  documentNamespace: `https://github.com/felixkarevo/kdenlive-mcp/sbom/${createHash('sha256').update(timestamp).digest('hex')}`,
   creationInfo: {
     created: timestamp,
     creators: ['Tool: scripts/generate-sbom.mjs'],

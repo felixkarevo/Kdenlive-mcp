@@ -5,6 +5,10 @@ import {
   findTrack,
   TimelineEditError,
 } from './editing.js';
+import {
+  effectParameterIssues,
+  resolveKdenliveEffect,
+} from './effect-catalog.js';
 import { newId } from './project.js';
 import type {
   Caption,
@@ -15,12 +19,85 @@ import type {
   Transition,
 } from './schema.js';
 
+export interface EffectKeyframeInput {
+  readonly id?: string;
+  readonly frame: number;
+  readonly value: number | string | boolean;
+  readonly interpolation?: 'linear' | 'hold' | 'smooth';
+}
+
 export interface EffectInput {
   readonly id?: string;
-  readonly service: string;
+  /** MLT service; optional when kdenliveId names a catalog effect. */
+  readonly service?: string;
+  /** Kdenlive effect ID such as lift_gamma_gain or frei0r.bezier_curves. */
+  readonly kdenliveId?: string;
   readonly enabled?: boolean;
   readonly parameters?: Effect['parameters'];
-  readonly keyframes?: Effect['keyframes'];
+  readonly keyframes?: Readonly<Record<string, readonly EffectKeyframeInput[]>>;
+  /** Fill Kdenlive defaults for unset catalog parameters (default true). */
+  readonly fillDefaults?: boolean;
+}
+
+function effectStack(effects: readonly EffectInput[]): {
+  effects: Effect[];
+  ids: Set<string>;
+  warnings: string[];
+} {
+  const ids = new Set<string>();
+  const stack = effects.map((effect): Effect => {
+    const id = effect.id ?? newId();
+    if (ids.has(id))
+      throw new TimelineEditError(
+        'DUPLICATE_EFFECT',
+        `Duplicate effect ID: ${id}`,
+        [id],
+      );
+    ids.add(id);
+    const keyframes: Effect['keyframes'] = Object.fromEntries(
+      Object.entries(effect.keyframes ?? {}).map(([name, values]) => [
+        name,
+        values.map((keyframe) => ({
+          id: keyframe.id ?? newId(),
+          frame: keyframe.frame,
+          value: keyframe.value,
+          interpolation: keyframe.interpolation ?? 'linear',
+        })),
+      ]),
+    );
+    let resolved: ReturnType<typeof resolveKdenliveEffect>;
+    try {
+      resolved = resolveKdenliveEffect({
+        service: effect.service,
+        kdenliveId: effect.kdenliveId,
+        parameters: effect.parameters ?? {},
+        keyframes,
+        fillDefaults: effect.fillDefaults ?? true,
+      });
+    } catch (cause) {
+      throw new TimelineEditError(
+        'EFFECT_UNKNOWN',
+        cause instanceof Error ? cause.message : String(cause),
+        [id],
+      );
+    }
+    return {
+      id,
+      service: resolved.service,
+      ...(resolved.kdenliveId === undefined
+        ? {}
+        : { kdenliveId: resolved.kdenliveId }),
+      enabled: effect.enabled ?? true,
+      parameters: resolved.parameters,
+      keyframes,
+    };
+  });
+  const warnings = stack.flatMap((effect) =>
+    effectParameterIssues(effect).map(
+      (issue) => `${issue.code}: ${issue.message}`,
+    ),
+  );
+  return { effects: stack, ids, warnings };
 }
 
 export async function setEffects(
@@ -36,25 +113,51 @@ export async function setEffects(
       `Track is locked: ${track.id}`,
       [track.id],
     );
-  const ids = new Set<string>();
-  clip.effects = effects.map((effect) => {
-    const id = effect.id ?? newId();
-    if (ids.has(id))
-      throw new TimelineEditError(
-        'DUPLICATE_EFFECT',
-        `Duplicate effect ID: ${id}`,
-        [id],
-      );
-    ids.add(id);
-    return {
-      id,
-      service: effect.service,
-      enabled: effect.enabled ?? true,
-      parameters: effect.parameters ?? {},
-      keyframes: effect.keyframes ?? {},
-    };
-  });
-  return await finalizeEdit(project, [clipId, track.id, ...ids]);
+  const stack = effectStack(effects);
+  clip.effects = stack.effects;
+  return await finalizeEdit(
+    project,
+    [clipId, track.id, ...stack.ids],
+    stack.warnings,
+  );
+}
+
+export async function setTrackEffects(
+  source: Project,
+  trackId: string,
+  effects: readonly EffectInput[],
+) {
+  const project = cloneProjectForEdit(source);
+  const track = findTrack(project, trackId);
+  if (track.locked)
+    throw new TimelineEditError(
+      'TRACK_LOCKED',
+      `Track is locked: ${track.id}`,
+      [track.id],
+    );
+  if (track.kind !== 'video' && effects.length > 0)
+    throw new TimelineEditError(
+      'TRACK_KIND_MISMATCH',
+      `Video effects require a video track: ${track.id}`,
+      [track.id],
+    );
+  const stack = effectStack(effects);
+  track.effects = stack.effects;
+  return await finalizeEdit(project, [track.id, ...stack.ids], stack.warnings);
+}
+
+export async function setMasterEffects(
+  source: Project,
+  effects: readonly EffectInput[],
+) {
+  const project = cloneProjectForEdit(source);
+  const stack = effectStack(effects);
+  project.masterEffects = stack.effects;
+  return await finalizeEdit(
+    project,
+    [project.id, ...stack.ids],
+    stack.warnings,
+  );
 }
 
 export async function addTransition(

@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import { serializeProject, type Project } from '@kdenlive-mcp/project-core';
 
+import { colorStatistics, type ColorStatistics } from './color-analysis.js';
 import { compileProject, type CompilerOptions } from './compiler.js';
 import {
   MeltExecutionCoordinator,
@@ -18,8 +19,16 @@ export interface PreviewArtifact {
   readonly path: string;
   readonly cacheKey: string;
   readonly cached: boolean;
-  readonly kind: 'frame' | 'contact-sheet' | 'range' | 'audio' | 'waveform';
+  readonly kind:
+    'frame' | 'contact-sheet' | 'range' | 'audio' | 'waveform' | 'scopes';
 }
+
+export interface FrameColorAnalysis {
+  readonly frame: number;
+  readonly statistics: ColorStatistics;
+}
+
+const ANALYSIS_WIDTH = 320;
 
 const LABEL_GLYPHS: Readonly<Record<string, readonly string[]>> = {
   ' ': ['00000', '00000', '00000', '00000', '00000', '00000', '00000'],
@@ -331,6 +340,99 @@ export class PreviewPipeline {
     );
   }
 
+  /** Renders a frame beside its RGB parade, vectorscope, and histogram. */
+  async renderScopes(
+    project: Project,
+    frame: number,
+    compilerOptions: CompilerOptions,
+  ): Promise<PreviewArtifact> {
+    const key = this.#key(project, 'scopes', { frame });
+    return await this.#cachedArtifact(
+      'scopes',
+      key,
+      '.png',
+      async (temporary) => {
+        const image = await this.renderFrame(project, frame, compilerOptions);
+        await this.#run(this.#ffmpeg, [
+          '-v',
+          'error',
+          '-i',
+          image.path,
+          '-filter_complex',
+          [
+            '[0:v]scale=512:288,split=4[o][w][v][h]',
+            '[w]format=gbrp,waveform=display=parade:components=7:intensity=0.3,scale=512:288,format=rgb24[wf]',
+            '[v]format=yuv444p,vectorscope=mode=color3:graticule=green,scale=288:288,pad=512:288:112:0,format=rgb24[vs]',
+            '[h]format=yuv444p,histogram=display_mode=overlay,scale=512:288,format=rgb24[hi]',
+            '[o]format=rgb24[oo]',
+            '[oo][wf][vs][hi]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[out]',
+          ].join(';'),
+          '-map',
+          '[out]',
+          '-frames:v',
+          '1',
+          '-y',
+          temporary,
+        ]);
+      },
+    );
+  }
+
+  /** Computes exposure, clipping, saturation, and cast statistics per frame. */
+  async analyzeColor(
+    project: Project,
+    frames: readonly number[],
+    compilerOptions: CompilerOptions,
+  ): Promise<FrameColorAnalysis[]> {
+    if (frames.length < 1 || frames.length > 12)
+      throw new RangeError('Color analysis requires 1 to 12 frames');
+    const height = Math.max(
+      2,
+      Math.round(
+        (ANALYSIS_WIDTH * project.settings.height) / project.settings.width / 2,
+      ) * 2,
+    );
+    const directory = join(this.root, 'tmp');
+    await mkdir(directory, { recursive: true });
+    const results: FrameColorAnalysis[] = [];
+    for (const frame of frames) {
+      const image = await this.renderFrame(project, frame, compilerOptions);
+      const raw = join(
+        directory,
+        `${image.cacheKey}-${crypto.randomUUID()}.rgb`,
+      );
+      try {
+        await this.#run(this.#ffmpeg, [
+          '-v',
+          'error',
+          '-i',
+          image.path,
+          '-vf',
+          `scale=${String(ANALYSIS_WIDTH)}:${String(height)}:flags=area`,
+          '-f',
+          'rawvideo',
+          '-pix_fmt',
+          'rgb24',
+          '-frames:v',
+          '1',
+          '-y',
+          raw,
+        ]);
+        results.push({
+          frame,
+          statistics: colorStatistics(
+            await readFile(raw),
+            ANALYSIS_WIDTH,
+            height,
+          ),
+        });
+      } finally {
+        await rm(raw, { force: true });
+      }
+    }
+    return results;
+  }
+
   #key(project: Project, kind: string, options: unknown): string {
     return createHash('sha256')
       .update(serializeProject(project))
@@ -368,7 +470,9 @@ export class PreviewPipeline {
   ): Promise<void> {
     const directory = join(this.root, 'tmp');
     await mkdir(directory, { recursive: true });
-    const path = join(directory, `${key}.mlt`);
+    // Unique per call: concurrent previews of the same frame share a cache key
+    // and must not delete each other's input while waiting for Melt.
+    const path = join(directory, `${key}-${crypto.randomUUID()}.mlt`);
     await writeFile(path, xml, 'utf8');
     try {
       await operation(path);

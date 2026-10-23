@@ -12,6 +12,7 @@ import {
 } from '@kdenlive-mcp/project-core';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { colorStatistics } from './color-analysis.js';
 import { compileProject } from './compiler.js';
 import { renderProgress, RenderJobManager } from './jobs.js';
 import { PreviewPipeline } from './preview.js';
@@ -131,6 +132,7 @@ function fixtureProject(): Project {
     muted: false,
     hidden: false,
     clips: [clip],
+    effects: [],
   };
   return {
     ...project,
@@ -926,5 +928,134 @@ describe('output verification', () => {
       'OUTPUT_BLACK_SEGMENT',
       'OUTPUT_FREEZE_SEGMENT',
     ]);
+  });
+});
+
+describe('color grading compilation', () => {
+  it('renders track effects per clip and master effects on the program', async () => {
+    const project = fixtureProject();
+    const track = project.tracks[0];
+    if (track === undefined) throw new Error('fixture track missing');
+    const clip = track.clips[0];
+    if (clip === undefined) throw new Error('fixture clip missing');
+    clip.timelineStart = 30;
+    track.effects = [
+      {
+        id: '00000000-0000-4000-8000-000000000401',
+        service: 'lift_gamma_gain',
+        kdenliveId: 'lift_gamma_gain',
+        enabled: true,
+        parameters: { gain_r: 1.2 },
+        keyframes: {
+          lift_b: [
+            {
+              id: '00000000-0000-4000-8000-000000000402',
+              frame: 0,
+              value: 0,
+              interpolation: 'linear',
+            },
+            {
+              id: '00000000-0000-4000-8000-000000000403',
+              frame: 60,
+              value: 0.2,
+              interpolation: 'linear',
+            },
+          ],
+        },
+      },
+    ];
+    project.masterEffects = [
+      {
+        id: '00000000-0000-4000-8000-000000000404',
+        service: 'avfilter.vibrance',
+        kdenliveId: 'avfilter.vibrance',
+        enabled: true,
+        parameters: { 'av.intensity': 0.3 },
+        keyframes: {},
+      },
+    ];
+    const compiled = await compileProject(project, {
+      projectRoot: resolve('fixtures'),
+    });
+    const producer = compiled.xml.slice(
+      compiled.xml.indexOf(`<producer id="producer-${clip.id}"`),
+      compiled.xml.indexOf(
+        '</producer>',
+        compiled.xml.indexOf(`producer-${clip.id}"`),
+      ),
+    );
+    expect(producer).toContain(
+      `<filter id="effect-00000000-0000-4000-8000-000000000401-${clip.id}"`,
+    );
+    // Timeline keyframes 0..60 become clip-local -30..30; the clip starts at
+    // the interpolated midpoint and the last keyframe stays inside the clip.
+    expect(producer).toContain(
+      '<property name="lift_b">0=0.1;30=0.2;89=0.2</property>',
+    );
+    const main = compiled.xml.slice(compiled.xml.indexOf('<tractor id="main"'));
+    expect(main).toContain(
+      '<filter id="effect-00000000-0000-4000-8000-000000000404" in="0" out="119">',
+    );
+    expect(main).toContain('<property name="av.intensity">0.3</property>');
+  });
+
+  it('measures exposure, clipping, and neutral cast from RGB pixels', () => {
+    const warmGrey = Uint8Array.from([140, 128, 115, 140, 128, 115]);
+    const warm = colorStatistics(warmGrey, 2, 1);
+    expect(warm.neutralCast.redMinusGreen).toBeGreaterThan(0.03);
+    expect(warm.neutralCast.blueMinusGreen).toBeLessThan(-0.03);
+    expect(warm.notes).toContain('Neutral areas lean warm (red/yellow).');
+    const clipped = colorStatistics(
+      Uint8Array.from([255, 255, 255, 0, 0, 0]),
+      2,
+      1,
+    );
+    expect(clipped.clipping.anyHighlight).toBe(0.5);
+    expect(clipped.clipping.anyShadow).toBe(0.5);
+    expect(clipped.luma.histogram[0]).toBe(0.5);
+    expect(clipped.luma.histogram[15]).toBe(0.5);
+    expect(() => colorStatistics(new Uint8Array(3), 2, 1)).toThrow(RangeError);
+  });
+});
+
+describe('preview concurrency', () => {
+  it('gives concurrent renders of the same frame separate MLT inputs', async () => {
+    const root = resolve('tmp', `preview-race-${crypto.randomUUID()}`);
+    const inputs: string[] = [];
+    const executor: CommandExecutor = {
+      async run(_executable, args) {
+        const xml = args[0] ?? '';
+        if (xml.endsWith('.mlt')) {
+          inputs.push(xml);
+          await stat(xml);
+          await new Promise((resolvePromise) => setTimeout(resolvePromise, 5));
+          await stat(xml);
+        }
+        const consumer = args.find((argument) =>
+          argument.startsWith('avformat:'),
+        );
+        const output = consumer?.slice('avformat:'.length) ?? args.at(-1) ?? '';
+        if (!output.startsWith('-')) {
+          await mkdir(resolve(output, '..'), { recursive: true });
+          await writeFile(output, 'fixture output');
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    };
+    const pipeline = new PreviewPipeline(root, {
+      executor,
+      meltPath: 'melt',
+      ffmpegPath: 'ffmpeg',
+    });
+    try {
+      const options = { projectRoot: resolve('fixtures') };
+      await Promise.all([
+        pipeline.renderFrame(fixtureProject(), 10, options),
+        pipeline.renderScopes(fixtureProject(), 10, options),
+      ]);
+      expect(new Set(inputs).size).toBe(inputs.length);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

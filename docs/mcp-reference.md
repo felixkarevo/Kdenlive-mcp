@@ -25,7 +25,9 @@ revision, changed IDs, warnings, and an undo token.
 | `timeline_move_clips`, `timeline_remove_clips`, `timeline_split_clip`               | Structural gestures                                      |
 | `timeline_trim_clip`, `timeline_slip_clip`, `timeline_set_speed`                    | Source/timing changes                                    |
 | `timeline_ripple_delete`                                                            | Normalized batched ripple deletion                       |
-| `clip_set_properties`, `clip_set_keyframes`, `clip_set_effects`                     | Properties and animation                                 |
+| `clip_set_properties`, `clip_set_keyframes`, `clip_set_effects`                     | Properties, animation, and clip effect stacks            |
+| `track_set_effects`, `project_set_master_effects`                                   | Video-track and whole-program effect stacks              |
+| `effect_catalog`                                                                    | Kdenlive color effects, raw MLT ranges, installed LUTs   |
 | `transition_edit`                                                                   | Add/update/remove transitions                            |
 | `text_edit`, `caption_edit`, `caption_generate`, `marker_edit`                      | Add/update/remove or generate timed creative entities    |
 | `caption_export`                                                                    | Write SRT or WebVTT under project artifacts              |
@@ -35,13 +37,14 @@ revision, changed IDs, warnings, and an undo token.
 
 ## Rendering and jobs
 
-| Tool                                | Purpose                               |
-| ----------------------------------- | ------------------------------------- |
-| `preview_submit`                    | Durable frame/range/audio preview job |
-| `preview_inspect`                   | Cached waveform or contact sheet      |
-| `render_submit`                     | Durable validated-profile export job  |
-| `job_get`, `job_list`, `job_cancel` | Client-owned job lifecycle            |
-| `job_verify`                        | Structured output verification        |
+| Tool                                | Purpose                                         |
+| ----------------------------------- | ----------------------------------------------- |
+| `preview_submit`                    | Durable frame/range/audio preview job           |
+| `preview_inspect`                   | Cached waveform, contact sheet, or color scopes |
+| `color_analyze`                     | Grading statistics for rendered frames          |
+| `render_submit`                     | Durable validated-profile export job            |
+| `job_get`, `job_list`, `job_cancel` | Client-owned job lifecycle                      |
+| `job_verify`                        | Structured output verification                  |
 
 Successful job artifacts are available at `kdenlive://artifacts/{jobId}` and are
 limited to 32 MiB per resource read. Larger export paths remain in the job result.

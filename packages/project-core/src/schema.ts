@@ -81,6 +81,8 @@ export const keyframeSchema = z.object({
 export const effectSchema = z.object({
   id: uuidSchema,
   service: z.string().min(1),
+  /** Kdenlive effect ID when it differs from the MLT service or is known. */
+  kdenliveId: z.string().min(1).optional(),
   enabled: z.boolean(),
   parameters: z.record(
     z.string(),
@@ -132,6 +134,8 @@ export const trackSchema = z.object({
   muted: z.boolean(),
   hidden: z.boolean(),
   clips: z.array(clipSchema),
+  /** Applied to every clip on the track; keyframes use timeline frames. */
+  effects: z.array(effectSchema).default([]),
 });
 
 export const transitionSchema = z.object({
@@ -201,6 +205,8 @@ export const projectSchema = z.object({
   texts: z.array(textOverlaySchema).default([]),
   captions: z.array(captionSchema),
   markers: z.array(markerSchema),
+  /** Applied to the composited program; keyframes use timeline frames. */
+  masterEffects: z.array(effectSchema).default([]),
 });
 
 export type Project = z.infer<typeof projectSchema>;

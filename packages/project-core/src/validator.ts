@@ -1,11 +1,13 @@
 import { access, realpath } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 
+import { effectParameterIssues, fileParameterNames } from './effect-catalog.js';
 import { clipDurationFrames } from './frame-math.js';
 import {
   projectSchema,
   type Asset,
   type Clip,
+  type Effect,
   type Project,
   type Track,
 } from './schema.js';
@@ -73,6 +75,22 @@ function collectIds(project: Project): readonly { id: string; path: string }[] {
       });
     });
   });
+  const effectIds = (effects: readonly Effect[], path: string): void =>
+    effects.forEach((effect, effectIndex) => {
+      ids.push({ id: effect.id, path: `${path}.${String(effectIndex)}.id` });
+      Object.values(effect.keyframes)
+        .flat()
+        .forEach((keyframe) => {
+          ids.push({
+            id: keyframe.id,
+            path: `${path}.${String(effectIndex)}.keyframes.${String(keyframe.frame)}`,
+          });
+        });
+    });
+  project.tracks.forEach((track, trackIndex) =>
+    effectIds(track.effects, `tracks.${String(trackIndex)}.effects`),
+  );
+  effectIds(project.masterEffects, 'masterEffects');
   project.transitions.forEach((item, index) =>
     ids.push({ id: item.id, path: `transitions.${String(index)}.id` }),
   );
@@ -86,6 +104,105 @@ function collectIds(project: Project): readonly { id: string; path: string }[] {
     ids.push({ id: item.id, path: `markers.${String(index)}.id` }),
   );
   return ids;
+}
+
+function fileParameters(effect: Effect): [string, string][] {
+  return fileParameterNames(effect.service).flatMap((name) =>
+    [
+      effect.parameters[name],
+      ...(effect.keyframes[name] ?? []).map((keyframe) => keyframe.value),
+    ]
+      .filter((value): value is string => typeof value === 'string')
+      .map((value): [string, string] => [name, value]),
+  );
+}
+
+function effectDiagnostics(
+  effect: Effect,
+  path: string,
+  relatedIds: readonly string[],
+  capabilities: ValidationCapabilities | undefined,
+): ProjectDiagnostic[] {
+  const output: ProjectDiagnostic[] = [];
+  if (
+    capabilities?.effects !== undefined &&
+    !capabilities.effects.includes(effect.service)
+  ) {
+    output.push(
+      diagnostic(
+        'EFFECT_UNAVAILABLE',
+        'error',
+        `MLT effect is unavailable: ${effect.service}`,
+        path,
+        {
+          entityId: effect.id,
+          relatedIds,
+          hint: effect.service.startsWith('frei0r.')
+            ? 'Install the frei0r plugins for MLT (for example the frei0r-plugins package) or replace the effect.'
+            : 'Install the required MLT module or replace the effect.',
+        },
+      ),
+    );
+  }
+  for (const issue of effectParameterIssues(effect)) {
+    output.push(
+      diagnostic(
+        issue.code,
+        'warning',
+        issue.message,
+        `${path}.parameters.${issue.parameter}`,
+        {
+          entityId: effect.id,
+          relatedIds,
+        },
+      ),
+    );
+  }
+  for (const [name, value] of fileParameters(effect)) {
+    if (!isAbsolute(value))
+      output.push(
+        diagnostic(
+          'EFFECT_FILE_RELATIVE',
+          'error',
+          `${effect.service}.${name} must be an absolute file path`,
+          `${path}.parameters.${name}`,
+          { entityId: effect.id, relatedIds },
+        ),
+      );
+  }
+  return output;
+}
+
+function effectStackDiagnostics(
+  effects: readonly Effect[],
+  path: string,
+  ownerId: string,
+  capabilities: ValidationCapabilities | undefined,
+): ProjectDiagnostic[] {
+  const output: ProjectDiagnostic[] = [];
+  effects.forEach((effect, effectIndex) => {
+    const effectPath = `${path}.${String(effectIndex)}`;
+    for (const [property, values] of Object.entries(effect.keyframes)) {
+      const frames = new Set<number>();
+      for (const keyframe of values) {
+        if (frames.has(keyframe.frame))
+          output.push(
+            diagnostic(
+              'DUPLICATE_KEYFRAME_FRAME',
+              'error',
+              `Multiple keyframes target frame ${String(keyframe.frame)}`,
+              `${effectPath}.keyframes.${property}`,
+              { entityId: keyframe.id, relatedIds: [effect.id, ownerId] },
+            ),
+          );
+        frames.add(keyframe.frame);
+      }
+    }
+    output.push(
+      ...effectDiagnostics(effect, effectPath, [ownerId], capabilities),
+    );
+  });
+  return output;
 }
 
 function validateClip(
@@ -208,24 +325,14 @@ function validateClip(
       `${path}.effects.${String(effectIndex)}.keyframes`,
       effect.id,
     );
-    if (
-      capabilities?.effects !== undefined &&
-      !capabilities.effects.includes(effect.service)
-    ) {
-      output.push(
-        diagnostic(
-          'EFFECT_UNAVAILABLE',
-          'error',
-          `MLT effect is unavailable: ${effect.service}`,
-          `${path}.effects.${String(effectIndex)}`,
-          {
-            entityId: effect.id,
-            relatedIds: [clip.id],
-            hint: 'Install the required MLT module or replace the effect.',
-          },
-        ),
-      );
-    }
+    output.push(
+      ...effectDiagnostics(
+        effect,
+        `${path}.effects.${String(effectIndex)}`,
+        [clip.id],
+        capabilities,
+      ),
+    );
   }
   return output;
 }
@@ -427,6 +534,51 @@ function validateTransitions(
   return output;
 }
 
+async function validateEffectFiles(
+  project: Project,
+): Promise<ProjectDiagnostic[]> {
+  const stacks: [string, string, readonly Effect[]][] = [
+    ...project.tracks.flatMap((track, trackIndex) => [
+      [track.id, `tracks.${String(trackIndex)}.effects`, track.effects] as [
+        string,
+        string,
+        readonly Effect[],
+      ],
+      ...track.clips.map(
+        (clip, clipIndex) =>
+          [
+            clip.id,
+            `tracks.${String(trackIndex)}.clips.${String(clipIndex)}.effects`,
+            clip.effects,
+          ] as [string, string, readonly Effect[]],
+      ),
+    ]),
+    [project.id, 'masterEffects', project.masterEffects],
+  ];
+  const output: ProjectDiagnostic[] = [];
+  for (const [ownerId, path, effects] of stacks) {
+    for (const [effectIndex, effect] of effects.entries()) {
+      for (const [name, value] of fileParameters(effect)) {
+        if (!isAbsolute(value)) continue;
+        try {
+          await access(value);
+        } catch {
+          output.push(
+            diagnostic(
+              'EFFECT_FILE_MISSING',
+              'error',
+              `${effect.service}.${name} file is missing: ${value}`,
+              `${path}.${String(effectIndex)}.parameters.${name}`,
+              { entityId: effect.id, relatedIds: [ownerId] },
+            ),
+          );
+        }
+      }
+    }
+  }
+  return output;
+}
+
 async function validateMedia(
   project: Project,
   projectRoot: string,
@@ -572,6 +724,34 @@ export async function validateProject(
     }
   });
   output.push(...validateTracks(project, options.capabilities));
+  project.tracks.forEach((track, trackIndex) => {
+    output.push(
+      ...effectStackDiagnostics(
+        track.effects,
+        `tracks.${String(trackIndex)}.effects`,
+        track.id,
+        options.capabilities,
+      ),
+    );
+    if (track.kind === 'audio' && track.effects.length > 0)
+      output.push(
+        diagnostic(
+          'TRACK_EFFECT_KIND',
+          'warning',
+          'Track effects are only rendered on video tracks',
+          `tracks.${String(trackIndex)}.effects`,
+          { entityId: track.id },
+        ),
+      );
+  });
+  output.push(
+    ...effectStackDiagnostics(
+      project.masterEffects,
+      'masterEffects',
+      project.id,
+      options.capabilities,
+    ),
+  );
   output.push(...validateTransitions(project, options.capabilities));
   if (options.capabilities?.encoders !== undefined) {
     for (const codec of [
@@ -656,6 +836,7 @@ export async function validateProject(
     if (options.projectRoot === undefined)
       throw new TypeError('projectRoot is required when checkMedia is true');
     output.push(...(await validateMedia(project, options.projectRoot)));
+    output.push(...(await validateEffectFiles(project)));
   }
   const changed =
     options.changedIds === undefined ? null : new Set(options.changedIds);

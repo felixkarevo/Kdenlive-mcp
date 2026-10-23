@@ -18,6 +18,10 @@ outputs using the Kdenlive/MLT and FFmpeg installation already on your computer.
 - Media ingest with allowed-root containment and managed/external modes.
 - Clip placement, linked A/V, ripple edits, properties, keyframes, effects,
   transitions, text, captions, and markers.
+- Color correction and grading with all of Kdenlive's Color and Image Correction
+  effects (lift/gamma/gain, curves, levels, white balance, 3D LUTs, HSL, and more)
+  on clips, tracks, and the master output, plus color scopes and measurements.
+  See the [color grading guide](docs/color-grading.md).
 - Durable preview/export jobs, progress, cancellation, restart recovery, and
   bounded artifacts.
 - Output duration, stream, A/V sync, loudness, clipping, black, and freeze checks.
@@ -33,8 +37,8 @@ Requirements: Node.js 22+, Bun 1.3+, and Kdenlive or separate MLT/FFmpeg tools.
 Powershell:
 
 ```powershell
-git clone https://github.com/felixkarevo/Kdenlive-mcp.git
-cd Kdenlive-mcp
+git clone https://github.com/felixkarevo/kdenlive-mcp.git
+cd kdenlive-mcp
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\install.ps1 -AddToPath
 kdenlive-mcp --doctor
@@ -43,8 +47,8 @@ kdenlive-mcp --doctor
 Linux:
 
 ```sh
-git clone https://github.com/felixkarevo/Kdenlive-mcp.git
-cd Kdenlive-mcp
+git clone https://github.com/felixkarevo/kdenlive-mcp.git
+cd kdenlive-mcp
 ./scripts/install.sh
 ~/.local/share/kdenlive-mcp/kdenlive-mcp-*/kdenlive-mcp --doctor
 ```

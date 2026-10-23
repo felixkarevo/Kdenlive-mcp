@@ -1,3 +1,4 @@
+import { listKdenliveEffects } from '@kdenlive-mcp/project-core';
 import {
   probeCapabilities,
   SpawnCommandRunner,
@@ -82,6 +83,31 @@ export async function runDoctor(): Promise<DoctorReport> {
             status: service === 'qtext' ? 'warning' : 'fail',
             message: `MLT ${kind} ${service} is unavailable`,
             fix: 'Use a complete Kdenlive/MLT installation with Qt and avformat modules.',
+          },
+    );
+  }
+  if (capabilities.mlt.available) {
+    const colorEffects = listKdenliveEffects({
+      availableFilters: capabilities.mlt.filters,
+    });
+    const missing = colorEffects.filter((effect) => effect.available === false);
+    const missingFrei0r = missing.some((effect) =>
+      effect.service.startsWith('frei0r.'),
+    );
+    checks.push(
+      missing.length === 0
+        ? {
+            id: 'color-effects',
+            status: 'pass',
+            message: `All ${String(colorEffects.length)} Kdenlive color correction effects are available`,
+          }
+        : {
+            id: 'color-effects',
+            status: 'warning',
+            message: `${String(missing.length)} of ${String(colorEffects.length)} Kdenlive color correction effects are unavailable: ${missing.map((effect) => effect.kdenliveId).join(', ')}`,
+            fix: missingFrei0r
+              ? 'Install the frei0r plugins for MLT (Debian/Ubuntu: sudo apt install frei0r-plugins; Fedora: frei0r-plugins).'
+              : 'Use a complete Kdenlive/MLT installation with avfilter and plus modules.',
           },
     );
   }

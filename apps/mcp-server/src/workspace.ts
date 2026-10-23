@@ -1,5 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { existsSync, realpathSync } from 'node:fs';
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
+import { homedir } from 'node:os';
 import {
   basename,
   dirname,
@@ -30,9 +40,14 @@ import {
   ProjectStore,
   commitEdit,
   createProject,
+  fileParameterNames,
+  findKdenliveEffect,
+  listKdenliveEffects,
+  resolveKdenliveEffect,
   queryTimeline,
   validateProject,
   type EditResult,
+  type EffectInput,
   type Project,
   type ProjectSettings,
   type TimelineQueryOptions,
@@ -54,6 +69,31 @@ import {
   SpawnCommandRunner,
   probeCapabilities,
 } from '@kdenlive-mcp/runtime-probe';
+
+/** Directories where Kdenlive installs and downloads 3D LUT files. */
+export function kdenliveLutDirectories(): string[] {
+  const home = homedir();
+  return [
+    join(home, '.local/share/kdenlive/luts'),
+    join(home, 'snap/kdenlive/current/.local/share/kdenlive/luts'),
+    join(home, '.var/app/org.kde.kdenlive/data/kdenlive/luts'),
+    '/usr/share/kdenlive/luts',
+    '/usr/local/share/kdenlive/luts',
+    '/snap/kdenlive/current/usr/share/kdenlive/luts',
+    '/var/lib/flatpak/app/org.kde.kdenlive/current/active/files/share/kdenlive/luts',
+  ].filter((path) => existsSync(path));
+}
+
+function withoutEffects(project: Project): Project {
+  const copy = structuredClone(project);
+  for (const track of copy.tracks) {
+    for (const effect of track.effects) effect.enabled = false;
+    for (const clip of track.clips)
+      for (const effect of clip.effects) effect.enabled = false;
+  }
+  for (const effect of copy.masterEffects) effect.enabled = false;
+  return copy;
+}
 
 interface ProjectHandle {
   readonly id: string;
@@ -734,14 +774,24 @@ export class WorkspaceService {
 
   async directPreview(input: {
     readonly projectId: string;
-    readonly kind: 'waveform' | 'contact-sheet';
+    readonly kind: 'waveform' | 'contact-sheet' | 'scopes';
     readonly start?: number;
     readonly end?: number;
     readonly frames?: readonly number[];
+    readonly bypassEffects?: boolean;
   }) {
     if (this.#jobs.hasActiveExports()) throw new MeltBusyError();
     const handle = this.#handle(input.projectId);
-    const project = handle.store.getProject();
+    const current = handle.store.getProject();
+    const project =
+      input.bypassEffects === true ? withoutEffects(current) : current;
+    if (input.kind === 'scopes') {
+      return await this.#previews.renderScopes(
+        project,
+        input.frames?.[0] ?? input.start ?? 0,
+        { projectRoot: handle.root },
+      );
+    }
     if (input.kind === 'waveform') {
       return await this.#previews.renderWaveform(
         project,
@@ -823,6 +873,142 @@ export class WorkspaceService {
       runner: new SpawnCommandRunner(),
     });
     return await this.#capabilities;
+  }
+
+  async effectCatalog(input: {
+    readonly kdenliveId?: string;
+    readonly query?: string;
+    readonly availableOnly?: boolean;
+  }) {
+    const capabilities = await this.capabilities();
+    const filters = capabilities.mlt.available
+      ? capabilities.mlt.filters
+      : undefined;
+    const listing = listKdenliveEffects(
+      filters === undefined ? {} : { availableFilters: filters },
+    );
+    const luts = await Promise.all(
+      kdenliveLutDirectories().map(async (directory) => ({
+        directory,
+        files: (await readdir(directory))
+          .filter((name) => /\.(cube|3dl|dat|m3d)$/iu.test(name))
+          .sort()
+          .map((name) => join(directory, name)),
+      })),
+    );
+    if (input.kdenliveId !== undefined) {
+      const definition = findKdenliveEffect(input.kdenliveId);
+      if (definition === undefined)
+        throw new Error(`Kdenlive effect not found: ${input.kdenliveId}`);
+      const entry = listing.find(
+        (item) => item.kdenliveId === definition.kdenliveId,
+      );
+      return {
+        effect: entry,
+        ...(definition.service === 'avfilter.lut3d' ? { luts } : {}),
+      };
+    }
+    const query = input.query?.toLowerCase();
+    const effects = listing
+      .filter(
+        (item) =>
+          (input.availableOnly !== true || item.available !== false) &&
+          (query === undefined ||
+            item.kdenliveId.toLowerCase().includes(query) ||
+            item.displayName.toLowerCase().includes(query) ||
+            item.parameters.some((parameter) =>
+              (parameter.label ?? parameter.name).toLowerCase().includes(query),
+            )),
+      )
+      .map((item) => ({
+        kdenliveId: item.kdenliveId,
+        service: item.service,
+        displayName: item.displayName,
+        category: item.category,
+        available: item.available,
+        parameters: item.parameters.map((parameter) => parameter.name),
+      }));
+    return {
+      category: 'color',
+      runtimeChecked: filters !== undefined,
+      unavailableCount: listing.filter((item) => item.available === false)
+        .length,
+      ...(listing.some(
+        (item) =>
+          item.available === false && item.service.startsWith('frei0r.'),
+      )
+        ? {
+            hint: 'frei0r effects are unavailable to this MLT runtime; install the frei0r plugins (for example the frei0r-plugins package) to enable them.',
+          }
+        : {}),
+      effects,
+      luts,
+    };
+  }
+
+  /** Rejects effect file parameters (such as LUTs) outside readable roots. */
+  assertEffectFiles(effects: readonly EffectInput[]): void {
+    const roots = [...this.allowedRoots, ...kdenliveLutDirectories()].flatMap(
+      (root) => {
+        try {
+          return [realpathSync(root)];
+        } catch {
+          return [];
+        }
+      },
+    );
+    for (const effect of effects) {
+      let service: string;
+      try {
+        service = resolveKdenliveEffect({
+          service: effect.service,
+          kdenliveId: effect.kdenliveId,
+          fillDefaults: false,
+        }).service;
+      } catch {
+        continue; // The edit itself rejects unresolvable effects.
+      }
+      for (const name of fileParameterNames(service)) {
+        const values = [
+          effect.parameters?.[name],
+          ...(effect.keyframes?.[name] ?? []).map((keyframe) => keyframe.value),
+        ];
+        for (const value of values) {
+          if (value === undefined || value === '') continue;
+          if (typeof value !== 'string' || !isAbsolute(value))
+            throw new Error(`${service}.${name} must be an absolute path`);
+          let candidate: string;
+          try {
+            candidate = realpathSync(value);
+          } catch {
+            throw new Error(`Effect file not found: ${value}`);
+          }
+          if (!roots.some((root) => contains(root, candidate)))
+            throw new Error(
+              `Path is outside configured roots: ${value}. Use a file under an allowed root or a Kdenlive LUT directory.`,
+            );
+        }
+      }
+    }
+  }
+
+  async colorAnalysis(input: {
+    readonly projectId: string;
+    readonly frames: readonly number[];
+    readonly bypassEffects?: boolean;
+  }) {
+    if (this.#jobs.hasActiveExports()) throw new MeltBusyError();
+    const handle = this.#handle(input.projectId);
+    const current = handle.store.getProject();
+    const project =
+      input.bypassEffects === true ? withoutEffects(current) : current;
+    return {
+      revision: current.revision,
+      bypassEffects: input.bypassEffects === true,
+      frames: await this.#previews.analyzeColor(project, input.frames, {
+        projectRoot: handle.root,
+      }),
+    };
   }
 
   async writeCaptionExport(

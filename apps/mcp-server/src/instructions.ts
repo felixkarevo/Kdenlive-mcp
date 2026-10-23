@@ -11,4 +11,5 @@ export const AGENT_INSTRUCTIONS = `# Kdenlive MCP operating rules
 9. Artifacts are available only after a job succeeds and remain subject to ownership and size limits.
 10. Treat warnings as fidelity decisions. Inspect transition source handles, unavailable services/codecs, and verification diagnostics before delivery.
 11. A MELT_EXECUTION_FAILED result blocks render QA and export. Do not retry through another Melt preview kind, use cached or source media as substitute QA, switch editors, or claim readiness. Report the failure category and diagnostic resource, then stop dependent work.
+12. For color grading, call effect_catalog to choose Kdenlive Color and Image Correction effects and read their raw MLT ranges; parameter values are MLT values, not Kdenlive UI percentages. Correct per clip with clip_set_effects, apply shared looks with track_set_effects, and finish the whole program with project_set_master_effects. Measure before and after with color_analyze (use bypassEffects for the ungraded baseline) and inspect preview_inspect kind scopes; fix clipping and casts before stylizing.
 `;

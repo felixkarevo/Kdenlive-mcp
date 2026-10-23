@@ -69,6 +69,7 @@ describe('validateProject', () => {
       muted: false,
       hidden: false,
       clips: [clip(ids.first, 0), clip(ids.second, 30)],
+      effects: [],
     };
     const secondClip = track.clips[1];
     if (secondClip === undefined)

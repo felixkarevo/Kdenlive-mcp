@@ -98,3 +98,51 @@ describe('interchange core', () => {
     ).toBe(false);
   });
 });
+
+describe('Kdenlive effect export', () => {
+  it('writes clip, track, and master grades as native Kdenlive filters', () => {
+    const project = createProject('Graded', {
+      id: '00000000-0000-4000-8000-000000000501',
+      now: new Date('2026-10-23T00:00:00.000Z'),
+    });
+    const effect = {
+      id: '00000000-0000-4000-8000-000000000502',
+      service: 'frei0r.curves',
+      kdenliveId: 'frei0r.bezier_curves',
+      enabled: false,
+      parameters: { '5': '-1;-1#0;0#0.1;0.1|0.9;0.9#1;1#2;2' },
+      keyframes: {},
+    };
+    project.tracks.push({
+      id: '00000000-0000-4000-8000-000000000503',
+      name: 'V1',
+      kind: 'video',
+      locked: false,
+      syncLocked: true,
+      muted: false,
+      hidden: false,
+      clips: [],
+      effects: [effect],
+    });
+    project.masterEffects.push({
+      ...effect,
+      id: '00000000-0000-4000-8000-000000000504',
+      service: 'avfilter.eq',
+      kdenliveId: 'avfilter.eq',
+      enabled: true,
+      parameters: { 'av.saturation': 1.2 },
+    });
+    const exported = exportInterchange(project, 'kdenlive').contents;
+    expect(exported).toContain(
+      '<property name="kdenlive_id">frei0r.bezier_curves</property>',
+    );
+    expect(exported).toContain('<property name="disable">1</property>');
+    expect(exported).toContain(
+      '<property name="mlt_service">avfilter.eq</property>',
+    );
+    expect(exported.indexOf('kdenlive_id">avfilter.eq')).toBeGreaterThan(
+      exported.indexOf('kdenlive:sequenceproperties.groups'),
+    );
+    expect(parseInterchange(exported, 'kdenlive').project).toEqual(project);
+  });
+});

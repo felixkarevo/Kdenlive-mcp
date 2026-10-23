@@ -22,15 +22,16 @@ operate on that file. Generated MLT or Kdenlive XML is never canonical state.
 
 ## Top-level entities
 
-| Field         | Meaning                                                                 |
-| ------------- | ----------------------------------------------------------------------- |
-| `settings`    | Fixed FPS, dimensions, sample rate, color metadata, and export defaults |
-| `assets`      | Hashed external/managed media references and normalized probe metadata  |
-| `tracks`      | Ordered video/audio tracks containing ordered clip arrays               |
-| `transitions` | Track-local transitions referencing adjacent clips                      |
-| `texts`       | Styled title/lower-third overlays with normalized canvas geometry       |
-| `captions`    | Styled frame ranges independent of media tracks                         |
-| `markers`     | Frame markers, chapters, and comments                                   |
+| Field           | Meaning                                                                 |
+| --------------- | ----------------------------------------------------------------------- |
+| `settings`      | Fixed FPS, dimensions, sample rate, color metadata, and export defaults |
+| `assets`        | Hashed external/managed media references and normalized probe metadata  |
+| `tracks`        | Ordered video/audio tracks with clip arrays and a track effect stack    |
+| `transitions`   | Track-local transitions referencing adjacent clips                      |
+| `texts`         | Styled title/lower-third overlays with normalized canvas geometry       |
+| `captions`      | Styled frame ranges independent of media tracks                         |
+| `markers`       | Frame markers, chapters, and comments                                   |
+| `masterEffects` | Effect stack applied to the composited program (Kdenlive master)        |
 
 The executable Zod definitions in `packages/project-core/src/schema.ts` are
 authoritative. Semantic rules—including references, track compatibility,
@@ -41,6 +42,12 @@ Clips include transform, crop, opacity, audio properties, ordered effects, and
 clip-local property/effect keyframes. Keyframes support `linear`, `hold`, and
 `smooth` interpolation and must fall inside the current clip duration. Structural
 edits transform those local frame coordinates when trims, splits, or speed change.
+
+Effects store the MLT `service`, an optional Kdenlive `kdenliveId` (needed when
+the two differ, such as `frei0r.bezier_curves` on `frei0r.curves`), raw MLT
+`parameters`, and `keyframes`. Track effects apply to every clip on a video track
+and master effects to the whole program; both use timeline-frame keyframes.
+Projects written before track and master effects existed load with empty stacks.
 
 ## Persistence and revisions
 

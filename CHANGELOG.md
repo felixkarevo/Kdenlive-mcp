@@ -1,8 +1,8 @@
 # Changelog
 
-## [1.1.1](https://github.com/felixkarevo/Kdenlive-mcp/compare/b1ff6d5...kdenlive-mcp-v1.1.1) (2026-10-20)
+## [1.1.1](https://github.com/felixkarevo/kdenlive-mcp/compare/b1ff6d5...kdenlive-mcp-v1.1.1) (2026-10-20)
 
-First release of the [felixkarevo/Kdenlive-mcp](https://github.com/felixkarevo/Kdenlive-mcp) fork.
+First release of the [felixkarevo/kdenlive-mcp](https://github.com/felixkarevo/kdenlive-mcp) fork.
 
 ### Bug Fixes
 

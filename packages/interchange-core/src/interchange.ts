@@ -4,6 +4,7 @@ import {
   clipDuration,
   createProject,
   projectSchema,
+  type Effect,
   type Project,
 } from '@kdenlive-mcp/project-core';
 import { z } from 'zod';
@@ -117,6 +118,21 @@ function fidelityFor(
           entityId: clip.id,
         });
     }
+  for (const track of project.tracks)
+    if (track.effects.length > 0)
+      issues.push({
+        code: 'OTIO_EFFECT_METADATA_ONLY',
+        severity: 'warning',
+        message: 'Track effects are retained in kdenlive_mcp metadata.',
+        entityId: track.id,
+      });
+  if (project.masterEffects.length > 0)
+    issues.push({
+      code: 'OTIO_EFFECT_METADATA_ONLY',
+      severity: 'warning',
+      message: 'Master effects are retained in kdenlive_mcp metadata.',
+      entityId: project.id,
+    });
   return issues;
 }
 
@@ -335,6 +351,54 @@ function exportOtio(project: Project): string {
   )}\n`;
 }
 
+function keyframeString(keyframes: Effect['keyframes'][string]): string {
+  return [...keyframes]
+    .sort(
+      (left, right) =>
+        left.frame - right.frame || left.id.localeCompare(right.id),
+    )
+    .map((keyframe) => {
+      const prefix =
+        keyframe.interpolation === 'hold'
+          ? '|'
+          : keyframe.interpolation === 'smooth'
+            ? '~'
+            : '';
+      return `${prefix}${String(keyframe.frame)}=${String(keyframe.value)}`;
+    })
+    .join(';');
+}
+
+/** Writes an effect as a native Kdenlive filter so the editor can show it. */
+function kdenliveFilterLines(
+  effect: Effect,
+  indent: number,
+  range: { readonly in: number; readonly out: number },
+): string[] {
+  const pad = ' '.repeat(indent);
+  const property = (name: string, value: string | number | boolean): string =>
+    `${pad}  <property name="${escapeXml(name)}">${escapeXml(String(value))}</property>`;
+  const lines = [
+    `${pad}<filter id="effect-${escapeXml(effect.id)}" in="${String(range.in)}" out="${String(range.out)}">`,
+    property('mlt_service', effect.service),
+    property('kdenlive_id', effect.kdenliveId ?? effect.service),
+    property('kdenlive:collapsed', 0),
+  ];
+  if (!effect.enabled) lines.push(property('disable', 1));
+  for (const [name, value] of Object.entries(effect.parameters).sort(
+    ([left], [right]) => left.localeCompare(right),
+  ))
+    lines.push(
+      property(name, typeof value === 'boolean' ? Number(value) : value),
+    );
+  for (const [name, values] of Object.entries(effect.keyframes).sort(
+    ([left], [right]) => left.localeCompare(right),
+  ))
+    if (values.length > 0) lines.push(property(name, keyframeString(values)));
+  lines.push(`${pad}</filter>`);
+  return lines;
+}
+
 function exportKdenlive(project: Project, captionFileName: string): string {
   const duration = Math.max(
     1,
@@ -418,6 +482,12 @@ function exportKdenlive(project: Project, captionFileName: string): string {
         `    <entry producer="${asset.producer}" in="${String(clip.sourceIn)}" out="${String(clip.sourceOut - 1)}">`,
         `      <property name="kdenlive:id">${String(asset.binId)}</property>`,
         `      <property name="kdenlive_mcp.clip">${escapeXml(Buffer.from(JSON.stringify(clip)).toString('base64'))}</property>`,
+        ...clip.effects.flatMap((effect) =>
+          kdenliveFilterLines(effect, 6, {
+            in: clip.sourceIn,
+            out: clip.sourceOut - 1,
+          }),
+        ),
         '    </entry>',
       );
       cursor = clip.timelineStart + clipDuration(clip);
@@ -440,6 +510,11 @@ function exportKdenlive(project: Project, captionFileName: string): string {
         : []),
       `    <track hide="${hide}" producer="playlist${String(firstPlaylist)}"/>`,
       `    <track hide="${hide}" producer="playlist${String(secondPlaylist)}"/>`,
+      ...('effects' in track
+        ? track.effects.flatMap((effect) =>
+            kdenliveFilterLines(effect, 4, { in: 0, out: duration - 1 }),
+          )
+        : []),
       '  </tractor>',
     );
   });
@@ -495,6 +570,10 @@ function exportKdenlive(project: Project, captionFileName: string): string {
       '      <property name="av.alpha">1</property>',
       '      <property name="kdenlive:locked">1</property>',
       '    </filter>',
+    );
+  for (const effect of project.masterEffects)
+    sequenceLines.push(
+      ...kdenliveFilterLines(effect, 4, { in: 0, out: duration - 1 }),
     );
   sequenceLines.push('  </tractor>');
   const profileId =

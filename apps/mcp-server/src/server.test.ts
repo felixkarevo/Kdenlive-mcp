@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -126,6 +126,125 @@ describe('Milestone 4 MCP protocol', () => {
         ? instructionContent.text
         : '',
     ).toContain('expectedRevision');
+  });
+
+  it('applies clip, track, and master color grades with guarded LUT paths', async () => {
+    const { root, client } = await session();
+    const tools = (await client.listTools()).tools.map((tool) => tool.name);
+    expect(tools).toEqual(
+      expect.arrayContaining([
+        'effect_catalog',
+        'clip_set_effects',
+        'track_set_effects',
+        'project_set_master_effects',
+        'color_analyze',
+      ]),
+    );
+    const created = envelope(
+      await client.callTool({
+        name: 'project_create',
+        arguments: { path: join(root, 'graded'), name: 'Graded' },
+      }),
+    );
+    const id = String(created.data?.id);
+    await client.callTool({
+      name: 'timeline_add_track',
+      arguments: { projectId: id, expectedRevision: 0, kind: 'video' },
+    });
+    const project = envelope(
+      await client.callTool({
+        name: 'project_get',
+        arguments: { projectId: id },
+      }),
+    ).data as { tracks: { id: string }[] };
+    const trackId = project.tracks[0]?.id ?? '';
+    const track = envelope(
+      await client.callTool({
+        name: 'track_set_effects',
+        arguments: {
+          projectId: id,
+          expectedRevision: 1,
+          trackId,
+          effects: [
+            {
+              kdenliveId: 'lift_gamma_gain',
+              keyframes: { gain_b: [{ frame: 0, value: 1.1 }] },
+            },
+          ],
+        },
+      }),
+    );
+    expect(track.ok).toBe(true);
+    const outside = envelope(
+      await client.callTool({
+        name: 'project_set_master_effects',
+        arguments: {
+          projectId: id,
+          expectedRevision: 2,
+          effects: [
+            {
+              kdenliveId: 'avfilter.lut3d',
+              parameters: { 'av.file': '/etc/passwd' },
+            },
+          ],
+        },
+      }),
+    );
+    expect(outside.error?.code).toBe('PATH_OUTSIDE_ROOTS');
+    const outsideDir = await mkdtemp(join(tmpdir(), 'kdenlive-mcp-outside-'));
+    cleanup.push(async () => {
+      await rm(outsideDir, { recursive: true, force: true });
+    });
+    const secret = join(outsideDir, 'secret.cube');
+    await writeFile(secret, 'LUT_3D_SIZE 2\n');
+    const link = join(root, 'escape.cube');
+    await symlink(secret, link);
+    for (const effect of [
+      // A mismatched kdenliveId must not hide the raw lut3d file parameter.
+      {
+        service: 'avfilter.lut3d',
+        kdenliveId: 'lift_gamma_gain',
+        parameters: { 'av.file': secret },
+      },
+      { service: 'avfilter.lut3d', parameters: { 'av.file': secret } },
+      // A symlink inside a root must not reach a file outside it.
+      { kdenliveId: 'avfilter.lut3d', parameters: { 'av.file': link } },
+      {
+        kdenliveId: 'avfilter.lut3d',
+        keyframes: { 'av.file': [{ frame: 0, value: secret }] },
+      },
+    ]) {
+      const rejected = envelope(
+        await client.callTool({
+          name: 'project_set_master_effects',
+          arguments: { projectId: id, expectedRevision: 2, effects: [effect] },
+        }),
+      );
+      expect(rejected.error?.code).toBe('PATH_OUTSIDE_ROOTS');
+    }
+    const lut = join(root, 'look.cube');
+    await writeFile(
+      lut,
+      'LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n',
+    );
+    const master = envelope(
+      await client.callTool({
+        name: 'project_set_master_effects',
+        arguments: {
+          projectId: id,
+          expectedRevision: 2,
+          effects: [
+            { kdenliveId: 'avfilter.lut3d', parameters: { 'av.file': lut } },
+          ],
+        },
+      }),
+    );
+    expect(master.ok).toBe(true);
+    const missingService = await client.callTool({
+      name: 'project_set_master_effects',
+      arguments: { projectId: id, expectedRevision: 3, effects: [{}] },
+    });
+    expect(missingService.isError).toBe(true);
   });
 
   it('merges partial project settings with the documented defaults', async () => {

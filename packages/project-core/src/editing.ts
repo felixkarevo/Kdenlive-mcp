@@ -90,9 +90,13 @@ export async function finalizeEdit(
     changedIds: [...new Set(changedIds)].sort(),
     warnings: [
       ...warnings,
+      // Skip bare codes already reported with a detailed `CODE: message`.
       ...diagnostics
         .filter((item) => item.severity === 'warning')
-        .map((item) => item.code),
+        .map((item) => item.code)
+        .filter(
+          (code) => !warnings.some((warning) => warning.startsWith(`${code}:`)),
+        ),
     ],
   };
 }

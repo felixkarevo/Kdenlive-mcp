@@ -21,7 +21,17 @@ export {
   type RenderJobRequest,
   type RenderJobStatus,
 } from './jobs.js';
-export { PreviewPipeline, type PreviewArtifact } from './preview.js';
+export {
+  PreviewPipeline,
+  type FrameColorAnalysis,
+  type PreviewArtifact,
+} from './preview.js';
+export {
+  colorStatistics,
+  type ChannelTriplet,
+  type ColorStatistics,
+  type ToneZone,
+} from './color-analysis.js';
 export {
   verifyOutput,
   type VerificationDiagnostic,

@@ -195,6 +195,61 @@ function numericAt(
   return before.value + (after.value - before.value) * ratio;
 }
 
+function valueAt(
+  keyframes: readonly Keyframe[],
+  frame: number,
+): Keyframe['value'] | undefined {
+  const sorted = [...keyframes].sort((left, right) => left.frame - right.frame);
+  const before = sorted.filter((keyframe) => keyframe.frame <= frame).at(-1);
+  if (before !== undefined && typeof before.value !== 'number')
+    return before.value;
+  if (sorted.every((keyframe) => typeof keyframe.value === 'number'))
+    return numericAt(sorted, frame, Number.NaN);
+  return (before ?? sorted[0])?.value;
+}
+
+/**
+ * Re-bases timeline-frame keyframes onto a clip-local range, adding boundary
+ * keyframes so values interpolated across the clip edges are preserved.
+ */
+function localizeKeyframes(
+  keyframes: Effect['keyframes'],
+  offset: number,
+  duration: number,
+  idPrefix: string,
+): Effect['keyframes'] {
+  return Object.fromEntries(
+    Object.entries(keyframes).map(([name, values]) => {
+      if (values.length === 0) return [name, []];
+      const shifted = values.map((keyframe) => ({
+        ...keyframe,
+        frame: keyframe.frame - offset,
+      }));
+      const inside = shifted.filter(
+        (keyframe) => keyframe.frame >= 0 && keyframe.frame < duration,
+      );
+      const boundaries = [0, duration - 1]
+        .filter((frame) => !inside.some((keyframe) => keyframe.frame === frame))
+        .flatMap((frame): Keyframe[] => {
+          const value = valueAt(shifted, frame);
+          if (value === undefined) return [];
+          const previous = shifted
+            .filter((keyframe) => keyframe.frame <= frame)
+            .at(-1);
+          return [
+            {
+              id: `${idPrefix}-${name}-${String(frame)}`,
+              frame,
+              value,
+              interpolation: previous?.interpolation ?? 'linear',
+            },
+          ];
+        });
+      return [name, [...inside, ...boundaries]];
+    }),
+  );
+}
+
 function affineGeometry(clip: Clip): string {
   const names = [
     'transform.x',
@@ -513,7 +568,26 @@ export async function compileProject(
         layerClip.sourceOut,
         layerClip.speed,
       );
-      lines.push(...clipProducerXml(layerClip, asset, options.projectRoot));
+      const trackEffects =
+        track.kind === 'video'
+          ? track.effects.map((effect) => ({
+              ...effect,
+              id: `${effect.id}-${clip.id}`,
+              keyframes: localizeKeyframes(
+                effect.keyframes,
+                layerClip.timelineStart,
+                clipDuration,
+                `${effect.id}-${clip.id}`,
+              ),
+            }))
+          : [];
+      lines.push(
+        ...clipProducerXml(
+          { ...layerClip, effects: [...layerClip.effects, ...trackEffects] },
+          asset,
+          options.projectRoot,
+        ),
+      );
       const producerIn =
         layerClip.speed.numerator === layerClip.speed.denominator
           ? layerClip.sourceIn
@@ -654,6 +728,8 @@ export async function compileProject(
     }
     lines.push('    </transition>');
   }
+  for (const effect of project.masterEffects)
+    lines.push(...effectXml(effect, duration));
   for (const marker of [...project.markers].sort(
     (a, b) => a.frame - b.frame || a.id.localeCompare(b.id),
   )) {

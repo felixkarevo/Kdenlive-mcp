@@ -25,6 +25,8 @@ import {
   setClipSpeed,
   setEffects,
   setKeyframes,
+  setMasterEffects,
+  setTrackEffects,
   slipClip,
   splitClip,
   trimClip,
@@ -33,6 +35,7 @@ import {
   updateTexts,
   updateTransition,
   type EditResult,
+  type EffectInput,
   type ProjectSettings,
 } from '@kdenlive-mcp/project-core';
 import {
@@ -90,6 +93,55 @@ const clipPropertyUpdateSchema = z
     properties: clipPropertyPatchSchema,
   })
   .strict();
+const effectValueSchema = z.union([z.number(), z.string(), z.boolean()]);
+const effectInputSchema = z
+  .object({
+    id: entityId.optional(),
+    kdenliveId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        'Kdenlive effect ID from effect_catalog, e.g. lift_gamma_gain or avfilter.lut3d.',
+      ),
+    service: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('Raw MLT service; optional when kdenliveId is given.'),
+    enabled: z.boolean().optional(),
+    parameters: z
+      .record(z.string(), effectValueSchema)
+      .optional()
+      .describe('Raw MLT property values (not Kdenlive UI percentages).'),
+    keyframes: z
+      .record(
+        z.string(),
+        z
+          .array(
+            z
+              .object({
+                id: entityId.optional(),
+                frame: z.number().int().nonnegative(),
+                value: effectValueSchema,
+                interpolation: z.enum(['linear', 'hold', 'smooth']).optional(),
+              })
+              .strict(),
+          )
+          .max(1000),
+      )
+      .optional(),
+    fillDefaults: z
+      .boolean()
+      .optional()
+      .describe('Write Kdenlive defaults for unset parameters (default true).'),
+  })
+  .strict()
+  .refine(
+    (value) => value.kdenliveId !== undefined || value.service !== undefined,
+    { message: 'Each effect needs kdenliveId or service' },
+  );
+const effectStackSchema = z.array(effectInputSchema).max(100);
 const captionStyleSchema = z
   .object({
     preset: z.string().min(1),
@@ -650,14 +702,41 @@ export function createMcpServer(options: ServerSessionOptions): McpServer {
   );
   mutation(
     'clip_set_effects',
-    'Replace an ordered clip effect stack.',
-    { clipId: entityId, effects: z.array(unknownRecord).max(100) },
-    async (project, input) =>
-      await setEffects(
+    'Replace an ordered clip effect stack (color grading, LUTs, any MLT filter). Use effect_catalog for Kdenlive effect IDs and raw MLT parameter ranges. Clip keyframes use clip-relative frames.',
+    { clipId: entityId, effects: effectStackSchema },
+    async (project, input) => {
+      workspace.assertEffectFiles(input.effects as readonly EffectInput[]);
+      return await setEffects(
         project,
         input.clipId,
-        input.effects as unknown as Parameters<typeof setEffects>[2],
-      ),
+        input.effects as readonly EffectInput[],
+      );
+    },
+  );
+  mutation(
+    'track_set_effects',
+    'Replace an ordered video-track effect stack applied to every clip on the track, like Kdenlive track effects. Keyframes use timeline frames.',
+    { trackId: entityId, effects: effectStackSchema },
+    async (project, input) => {
+      workspace.assertEffectFiles(input.effects as readonly EffectInput[]);
+      return await setTrackEffects(
+        project,
+        input.trackId,
+        input.effects as readonly EffectInput[],
+      );
+    },
+  );
+  mutation(
+    'project_set_master_effects',
+    'Replace the master effect stack applied to the whole composited program (including titles and captions), like Kdenlive master effects. Keyframes use timeline frames.',
+    { effects: effectStackSchema },
+    async (project, input) => {
+      workspace.assertEffectFiles(input.effects as readonly EffectInput[]);
+      return await setMasterEffects(
+        project,
+        input.effects as readonly EffectInput[],
+      );
+    },
   );
 
   mutation(
@@ -978,10 +1057,11 @@ export function createMcpServer(options: ServerSessionOptions): McpServer {
   server.registerTool(
     'preview_inspect',
     {
-      description: 'Create a cached waveform or contact sheet.',
+      description:
+        'Create a cached audio waveform, contact sheet, or color scopes image (frame, RGB parade, vectorscope, histogram for frames[0]).',
       inputSchema: {
         projectId,
-        kind: z.enum(['waveform', 'contact-sheet']),
+        kind: z.enum(['waveform', 'contact-sheet', 'scopes']),
         start: z.number().int().nonnegative().optional(),
         end: z.number().int().positive().optional(),
         frames: z
@@ -989,10 +1069,14 @@ export function createMcpServer(options: ServerSessionOptions): McpServer {
           .min(1)
           .max(12)
           .optional(),
+        bypassEffects: z
+          .boolean()
+          .optional()
+          .describe('Render with every effect disabled for a before view.'),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    ({ projectId: id, kind, start, end, frames }) =>
+    ({ projectId: id, kind, start, end, frames, bypassEffects }) =>
       guarded(
         async () =>
           await workspace.directPreview({
@@ -1001,6 +1085,56 @@ export function createMcpServer(options: ServerSessionOptions): McpServer {
             ...(start === undefined ? {} : { start }),
             ...(end === undefined ? {} : { end }),
             ...(frames === undefined ? {} : { frames }),
+            ...(bypassEffects === undefined ? {} : { bypassEffects }),
+          }),
+      ),
+  );
+
+  server.registerTool(
+    'color_analyze',
+    {
+      description:
+        'Measure rendered frames for grading: luma percentiles and histogram, clipped/crushed pixels, channel means, shadow/midtone/highlight balance, saturation, and neutral color cast, with plain-language notes.',
+      inputSchema: {
+        projectId,
+        frames: z.array(z.number().int().nonnegative()).min(1).max(12),
+        bypassEffects: z
+          .boolean()
+          .optional()
+          .describe('Analyze with every effect disabled for a before view.'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ projectId: id, frames, bypassEffects }) =>
+      guarded(
+        async () =>
+          await workspace.colorAnalysis({
+            projectId: id,
+            frames,
+            ...(bypassEffects === undefined ? {} : { bypassEffects }),
+          }),
+      ),
+  );
+
+  server.registerTool(
+    'effect_catalog',
+    {
+      description:
+        'List Kdenlive Color and Image Correction effects with MLT service, availability in the installed runtime, and installed LUT files; pass kdenliveId for full parameter names, raw MLT ranges, defaults, options, and keyframe support.',
+      inputSchema: {
+        kdenliveId: z.string().min(1).optional(),
+        query: z.string().min(1).max(100).optional(),
+        availableOnly: z.boolean().optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    ({ kdenliveId, query, availableOnly }) =>
+      guarded(
+        async () =>
+          await workspace.effectCatalog({
+            ...(kdenliveId === undefined ? {} : { kdenliveId }),
+            ...(query === undefined ? {} : { query }),
+            ...(availableOnly === undefined ? {} : { availableOnly }),
           }),
       ),
   );

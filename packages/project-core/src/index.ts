@@ -120,18 +120,31 @@ export {
   removeTexts,
   removeTransition,
   setEffects,
+  setMasterEffects,
+  setTrackEffects,
   updateCaptions,
   updateMarkers,
   updateTexts,
   updateTransition,
   type EffectInput,
+  type EffectKeyframeInput,
 } from './creative.js';
 export { commitEdit } from './edit-transaction.js';
 export {
   buildEffectCatalog,
+  effectParameterIssues,
+  fileParameterNames,
+  findKdenliveEffect,
+  listKdenliveEffects,
+  resolveKdenliveEffect,
   type EffectCatalog,
   type EffectCatalogEntry,
+  type EffectCategory,
   type EffectParameterDefinition,
+  type EffectParameterIssue,
+  type EffectParameterType,
+  type KdenliveEffectDefinition,
+  type KdenliveEffectListing,
 } from './effect-catalog.js';
 export { exportSrt, exportVtt, importCaptions } from './caption-io.js';
 export {
